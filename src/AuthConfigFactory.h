@@ -82,7 +82,8 @@ public:
 private:
   std::unique_ptr<Netrc> netrc_;
 
-  std::unique_ptr<AuthResolver> createHttpAuthResolver(const Option* op) const;
+  std::unique_ptr<AuthResolver>
+  createHttpAuthResolver(const Option* op, bool allowUserDefinedCred) const;
 
   std::unique_ptr<AuthResolver> createFtpAuthResolver(const Option* op) const;
 
@@ -104,12 +105,14 @@ public:
 
   // Find a BasicCred using findBasicCred() and activate it then
   // return true.  If matching BasicCred is not found, AuthConfig
-  // object is created using createHttpAuthResolver and op.  If it is
-  // null, then returns false. Otherwise new BasicCred is created
-  // using this AuthConfig object with given host and path "/" and
-  // returns true.
+  // object is created using createHttpAuthResolver and op.  User-defined
+  // credentials are excluded when allowUserDefinedCred is false, but a
+  // host-specific netrc entry can still be used.  If no AuthConfig is found,
+  // this returns false. Otherwise a new BasicCred is created using the given
+  // host and path and this returns true.
   bool activateBasicCred(const std::string& host, uint16_t port,
-                         const std::string& path, const Option* op);
+                         const std::string& path, const Option* op,
+                         bool allowUserDefinedCred = true);
 
   // Find a BasicCred using host, port and path and return the
   // iterator pointing to it. If not found, then return

@@ -15,6 +15,7 @@ class AuthConfigFactoryTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(AuthConfigFactoryTest);
   CPPUNIT_TEST(testCreateAuthConfig_http);
   CPPUNIT_TEST(testCreateAuthConfig_httpNoChallenge);
+  CPPUNIT_TEST(testDoNotForwardHttpAuthOnCrossOriginRedirect);
   CPPUNIT_TEST(testCreateAuthConfig_ftp);
   CPPUNIT_TEST(testUpdateBasicCred);
   CPPUNIT_TEST_SUITE_END();
@@ -22,6 +23,7 @@ class AuthConfigFactoryTest : public CppUnit::TestFixture {
 public:
   void testCreateAuthConfig_http();
   void testCreateAuthConfig_httpNoChallenge();
+  void testDoNotForwardHttpAuthOnCrossOriginRedirect();
   void testCreateAuthConfig_ftp();
   void testUpdateBasicCred();
 };
@@ -125,6 +127,86 @@ void AuthConfigFactoryTest::testCreateAuthConfig_httpNoChallenge()
       "http://aria2user:aria2password@localhost/download/aria2-1.0.0.tar.bz2");
   CPPUNIT_ASSERT_EQUAL(std::string("aria2user:aria2password"),
                        factory.createAuthConfig(req, &option)->getAuthText());
+}
+
+void AuthConfigFactoryTest::testDoNotForwardHttpAuthOnCrossOriginRedirect()
+{
+  Option option;
+  option.put(PREF_NO_NETRC, A2_V_TRUE);
+  option.put(PREF_HTTP_AUTH_CHALLENGE, A2_V_FALSE);
+  option.put(PREF_HTTP_USER, "globalUser");
+  option.put(PREF_HTTP_PASSWD, "globalPassword");
+
+  AuthConfigFactory factory;
+
+  auto sameOrigin = std::make_shared<Request>();
+  CPPUNIT_ASSERT(sameOrigin->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT_EQUAL(
+      std::string("globalUser:globalPassword"),
+      factory.createAuthConfig(sameOrigin, &option)->getAuthText());
+  CPPUNIT_ASSERT(sameOrigin->redirectUri("/mirror/file"));
+  CPPUNIT_ASSERT(!sameOrigin->isCrossOriginRedirect());
+  CPPUNIT_ASSERT_EQUAL(
+      std::string("globalUser:globalPassword"),
+      factory.createAuthConfig(sameOrigin, &option)->getAuthText());
+
+  auto sameOriginDifferentCase = std::make_shared<Request>();
+  CPPUNIT_ASSERT(
+      sameOriginDifferentCase->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT(sameOriginDifferentCase->redirectUri(
+      "http://LOCALHOST/mirror/file"));
+  CPPUNIT_ASSERT(!sameOriginDifferentCase->isCrossOriginRedirect());
+  CPPUNIT_ASSERT_EQUAL(
+      std::string("globalUser:globalPassword"),
+      factory.createAuthConfig(sameOriginDifferentCase, &option)->getAuthText());
+
+  auto differentHost = std::make_shared<Request>();
+  CPPUNIT_ASSERT(differentHost->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT(differentHost->redirectUri("http://mirror/download/file"));
+  CPPUNIT_ASSERT(differentHost->isCrossOriginRedirect());
+  CPPUNIT_ASSERT(!factory.createAuthConfig(differentHost, &option));
+
+  auto differentScheme = std::make_shared<Request>();
+  CPPUNIT_ASSERT(differentScheme->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT(
+      differentScheme->redirectUri("https://localhost/download/file"));
+  CPPUNIT_ASSERT(differentScheme->isCrossOriginRedirect());
+  CPPUNIT_ASSERT(!factory.createAuthConfig(differentScheme, &option));
+
+  auto differentPort = std::make_shared<Request>();
+  CPPUNIT_ASSERT(differentPort->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT(
+      differentPort->redirectUri("http://localhost:8080/download/file"));
+  CPPUNIT_ASSERT(differentPort->isCrossOriginRedirect());
+  CPPUNIT_ASSERT(!factory.createAuthConfig(differentPort, &option));
+
+  // Credentials explicitly supplied by the redirect target are safe to use.
+  auto explicitCred = std::make_shared<Request>();
+  CPPUNIT_ASSERT(explicitCred->setUri("http://localhost/download/file"));
+  CPPUNIT_ASSERT(explicitCred->redirectUri(
+      "http://redirectUser:redirectPassword@mirror/download/file"));
+  CPPUNIT_ASSERT_EQUAL(
+      std::string("redirectUser:redirectPassword"),
+      factory.createAuthConfig(explicitCred, &option)->getAuthText());
+
+  // Challenge-based authentication must not reactivate global credentials on
+  // a cross-origin redirect either.
+  option.put(PREF_HTTP_AUTH_CHALLENGE, A2_V_TRUE);
+  CPPUNIT_ASSERT(!factory.activateBasicCred(
+      differentHost->getHost(), differentHost->getPort(),
+      differentHost->getDir(), &option,
+      !differentHost->isCrossOriginRedirect()));
+
+  // A host-specific netrc entry for the redirect target remains available.
+  option.put(PREF_NO_NETRC, A2_V_FALSE);
+  option.put(PREF_HTTP_AUTH_CHALLENGE, A2_V_FALSE);
+  auto netrc = make_unique<Netrc>();
+  netrc->addAuthenticator(make_unique<Authenticator>(
+      "mirror", "mirrorUser", "mirrorPassword", "mirrorAccount"));
+  factory.setNetrc(std::move(netrc));
+  CPPUNIT_ASSERT_EQUAL(
+      std::string("mirrorUser:mirrorPassword"),
+      factory.createAuthConfig(differentHost, &option)->getAuthText());
 }
 
 void AuthConfigFactoryTest::testCreateAuthConfig_ftp()

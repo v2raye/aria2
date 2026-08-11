@@ -209,7 +209,8 @@ bool HttpSkipResponseCommand::processResponse()
           !httpResponse_->getHttpRequest()->authenticationUsed() &&
           getDownloadEngine()->getAuthConfigFactory()->activateBasicCred(
               getRequest()->getHost(), getRequest()->getPort(),
-              getRequest()->getDir(), getOption().get())) {
+              getRequest()->getDir(), getOption().get(),
+              !getRequest()->isCrossOriginRedirect())) {
         return prepareForRetry(0);
       }
       throw DL_ABORT_EX2(EX_AUTH_FAILED, error_code::HTTP_AUTH_FAILED);

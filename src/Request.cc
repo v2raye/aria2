@@ -161,6 +161,21 @@ bool Request::parseUri(const std::string& srcUri)
 
 void Request::resetRedirectCount() { redirectCount_ = 0; }
 
+bool Request::isCrossOriginRedirect() const
+{
+  if (redirectCount_ == 0) {
+    return false;
+  }
+
+  uri::UriStruct original;
+  if (!uri::parse(original, removeFragment(uri_))) {
+    return false;
+  }
+
+  return !util::strieq(original.protocol, us_.protocol) ||
+         !util::strieq(original.host, us_.host) || original.port != us_.port;
+}
+
 void Request::setMaxPipelinedRequest(int num) { maxPipelinedRequest_ = num; }
 
 const std::shared_ptr<PeerStat>& Request::initPeerStat()

@@ -84,8 +84,8 @@ AuthConfigFactory::createAuthConfig(const std::shared_ptr<Request>& request,
                                   request->getPassword());
       }
       else {
-        return createHttpAuthResolver(op)->resolveAuthConfig(
-            request->getHost());
+        return createHttpAuthResolver(op, !request->isCrossOriginRedirect())
+            ->resolveAuthConfig(request->getHost());
       }
     }
   }
@@ -124,7 +124,8 @@ AuthConfigFactory::createAuthConfig(const std::shared_ptr<Request>& request,
 }
 
 std::unique_ptr<AuthResolver>
-AuthConfigFactory::createHttpAuthResolver(const Option* op) const
+AuthConfigFactory::createHttpAuthResolver(const Option* op,
+                                          bool allowUserDefinedCred) const
 {
   std::unique_ptr<AbstractAuthResolver> resolver;
   if (op->getAsBool(PREF_NO_NETRC)) {
@@ -136,8 +137,10 @@ AuthConfigFactory::createHttpAuthResolver(const Option* op) const
     authResolver->ignoreDefault();
     resolver = std::move(authResolver);
   }
-  resolver->setUserDefinedCred(op->get(PREF_HTTP_USER),
-                               op->get(PREF_HTTP_PASSWD));
+  if (allowUserDefinedCred) {
+    resolver->setUserDefinedCred(op->get(PREF_HTTP_USER),
+                                 op->get(PREF_HTTP_PASSWD));
+  }
   return std::move(resolver);
 }
 
@@ -178,11 +181,13 @@ void AuthConfigFactory::updateBasicCred(std::unique_ptr<BasicCred> basicCred)
 bool AuthConfigFactory::activateBasicCred(const std::string& host,
                                           uint16_t port,
                                           const std::string& path,
-                                          const Option* op)
+                                          const Option* op,
+                                          bool allowUserDefinedCred)
 {
   auto i = findBasicCred(host, port, path);
   if (i == std::end(basicCreds_)) {
-    auto authConfig = createHttpAuthResolver(op)->resolveAuthConfig(host);
+    auto authConfig =
+        createHttpAuthResolver(op, allowUserDefinedCred)->resolveAuthConfig(host);
     if (!authConfig) {
       return false;
     }

@@ -91,6 +91,9 @@ public:
   int getTryCount() const { return tryCount_; }
   void resetRedirectCount();
   int getRedirectCount() const { return redirectCount_; }
+  // Returns true if the current URI was reached through a redirect which
+  // changed scheme, host, or port from the original URI.
+  bool isCrossOriginRedirect() const;
   // Returns URI passed by setUri()
   const std::string& getUri() const { return uri_; }
   const std::string& getCurrentUri() const { return currentUri_; }
