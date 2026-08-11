@@ -105,6 +105,24 @@ void ParamedStringTest::testExpand()
   catch (const Exception& e) {
   }
 
+  // Zero loop step
+  s = "alpha:[1-2:0]:bravo";
+  try {
+    paramed_string::expand(s.begin(), s.end(), std::back_inserter(res));
+    CPPUNIT_FAIL("Exception must be thrown.");
+  }
+  catch (const Exception& e) {
+  }
+
+  // Zero alphabetic loop step
+  s = "alpha:[a-b:0]:bravo";
+  try {
+    paramed_string::expand(s.begin(), s.end(), std::back_inserter(res));
+    CPPUNIT_FAIL("Exception must be thrown.");
+  }
+  catch (const Exception& e) {
+  }
+
   // Range overflow
   s = "alpha:[0-65536]:bravo";
   try {

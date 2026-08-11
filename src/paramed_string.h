@@ -107,7 +107,7 @@ InputIterator expandLoop(std::vector<std::string>& res, InputIterator first,
     step = 1;
   }
   else {
-    if (!util::parseUIntNoThrow(step, std::string(colon + 1, i))) {
+    if (!util::parseUIntNoThrow(step, std::string(colon + 1, i)) || step == 0) {
       throw DL_ABORT_EX("A step count must be a positive number.");
     }
     if (step > UINT16_MAX) {
