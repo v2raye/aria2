@@ -34,8 +34,10 @@
 /* copyright --> */
 #include "GZipEncoder.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 
 #include "fmt.h"
 #include "DlAbortEx.h"
@@ -43,24 +45,24 @@
 
 namespace aria2 {
 
-GZipEncoder::GZipEncoder() : strm_(nullptr) {}
+GZipEncoder::GZipEncoder() : strm_(nullptr), finished_(false) {}
 
 GZipEncoder::~GZipEncoder() { release(); }
 
 void GZipEncoder::init()
 {
   release();
-  strm_ = new z_stream();
-  strm_->zalloc = Z_NULL;
-  strm_->zfree = Z_NULL;
-  strm_->opaque = Z_NULL;
-  strm_->avail_in = 0;
-  strm_->next_in = Z_NULL;
+  internalBuf_.clear();
+  auto stream = make_unique<z_stream>();
+  memset(stream.get(), 0, sizeof(z_stream));
 
-  if (Z_OK != deflateInit2(strm_, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 9,
-                           Z_DEFAULT_STRATEGY)) {
-    throw DL_ABORT_EX("Initializing z_stream failed.");
+  int rv = deflateInit2(stream.get(), Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 9,
+                        Z_DEFAULT_STRATEGY);
+  if (rv != Z_OK) {
+    throw DL_ABORT_EX(
+        fmt("Initializing z_stream failed. cause:%s", zError(rv)));
   }
+  strm_ = stream.release();
 }
 
 void GZipEncoder::release()
@@ -70,26 +72,69 @@ void GZipEncoder::release()
     delete strm_;
     strm_ = nullptr;
   }
+  finished_ = false;
 }
 
 std::string GZipEncoder::encode(const unsigned char* in, size_t length,
                                 int flush)
 {
-  strm_->avail_in = length;
-  strm_->next_in = const_cast<unsigned char*>(in);
+  if (!strm_) {
+    throw DL_ABORT_EX("GZipEncoder is not initialized.");
+  }
+  if (finished_) {
+    throw DL_ABORT_EX("GZipEncoder is already finished.");
+  }
+  if (length != 0 && !in) {
+    throw DL_ABORT_EX("GZipEncoder input is null.");
+  }
+  if (length == 0 && flush == Z_NO_FLUSH) {
+    return std::string();
+  }
+
   std::string out;
   std::array<unsigned char, 4_k> outbuf;
-  while (1) {
+  size_t remaining = length;
+  const unsigned char* next = in;
+
+  for (;;) {
+    if (strm_->avail_in == 0 && remaining != 0) {
+      const auto chunk = static_cast<uInt>(std::min(
+          remaining,
+          static_cast<size_t>(std::numeric_limits<uInt>::max())));
+      strm_->avail_in = chunk;
+      strm_->next_in = const_cast<unsigned char*>(next);
+      next += chunk;
+      remaining -= chunk;
+    }
+
+    const int currentFlush = remaining == 0 ? flush : Z_NO_FLUSH;
+    const uInt availInBefore = strm_->avail_in;
     strm_->avail_out = outbuf.size();
     strm_->next_out = outbuf.data();
-    int ret = ::deflate(strm_, flush);
-    if (ret == Z_STREAM_ERROR) {
-      throw DL_ABORT_EX(fmt("libz::deflate() failed. cause:%s", strm_->msg));
+    int ret = ::deflate(strm_, currentFlush);
+    if (ret != Z_OK && ret != Z_STREAM_END) {
+      throw DL_ABORT_EX(fmt("libz::deflate() failed. cause:%s",
+                            strm_->msg ? strm_->msg : zError(ret)));
     }
-    size_t produced = outbuf.size() - strm_->avail_out;
-    out.append(outbuf.data(), outbuf.data() + produced);
-    if (strm_->avail_out > 0) {
+    if (strm_->avail_in > availInBefore ||
+        strm_->avail_out > outbuf.size()) {
+      throw DL_ABORT_EX("libz::deflate() returned invalid buffer lengths.");
+    }
+
+    const size_t consumed = availInBefore - strm_->avail_in;
+    const size_t produced = outbuf.size() - strm_->avail_out;
+    out.append(reinterpret_cast<const char*>(outbuf.data()), produced);
+
+    if (ret == Z_STREAM_END) {
+      finished_ = true;
       break;
+    }
+    if (remaining == 0 && strm_->avail_in == 0 &&
+        currentFlush == Z_NO_FLUSH && strm_->avail_out != 0) {
+      break;
+    }
+    if (consumed == 0 && produced == 0) {
+      throw DL_ABORT_EX("libz::deflate() made no progress.");
     }
   }
   return out;
@@ -97,7 +142,9 @@ std::string GZipEncoder::encode(const unsigned char* in, size_t length,
 
 std::string GZipEncoder::str()
 {
-  internalBuf_ += encode(nullptr, 0, Z_FINISH);
+  if (!finished_) {
+    internalBuf_ += encode(nullptr, 0, Z_FINISH);
+  }
   return internalBuf_;
 }
 

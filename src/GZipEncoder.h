@@ -46,6 +46,8 @@ class GZipEncoder {
 private:
   z_stream* strm_;
 
+  bool finished_;
+
   // Internal buffer for deflated data.
   std::string internalBuf_;
 
@@ -89,8 +91,8 @@ public:
   // Releases allocated resources.
   void release();
 
-  // Returns deflated result kept internally. After this function
-  // call, further calls to operator<<() and encode() are not allowed.
+  // Returns deflated result kept internally. Repeated calls return the same
+  // result. After the first call, operator<<() and encode() are not allowed.
   std::string str();
 };
 
