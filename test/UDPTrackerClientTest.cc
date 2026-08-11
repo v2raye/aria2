@@ -16,6 +16,7 @@ class UDPTrackerClientTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(UDPTrackerClientTest);
   CPPUNIT_TEST(testCreateUDPTrackerConnect);
   CPPUNIT_TEST(testCreateUDPTrackerAnnounce);
+  CPPUNIT_TEST(testRejectInvalidRequestBuffers);
   CPPUNIT_TEST(testConnectFollowedByAnnounce);
   CPPUNIT_TEST(testRequestFailure);
   CPPUNIT_TEST(testTimeout);
@@ -26,6 +27,7 @@ public:
 
   void testCreateUDPTrackerConnect();
   void testCreateUDPTrackerAnnounce();
+  void testRejectInvalidRequestBuffers();
   void testConnectFollowedByAnnounce();
   void testRequestFailure();
   void testTimeout();
@@ -146,6 +148,47 @@ void UDPTrackerClientTest::testCreateUDPTrackerAnnounce()
                        (int32_t)bittorrent::getIntParam(data, 92));
   CPPUNIT_ASSERT_EQUAL(req->port, bittorrent::getShortIntParam(data, 96));
   CPPUNIT_ASSERT_EQUAL(req->extensions, bittorrent::getShortIntParam(data, 98));
+}
+
+void UDPTrackerClientTest::testRejectInvalidRequestBuffers()
+{
+  unsigned char data[100] = {};
+  std::string remoteAddr = "unchanged";
+  uint16_t remotePort = 1234;
+  auto req = createAnnounce("192.168.0.1", 6991, 1000000009);
+
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerConnect(data, 15, remoteAddr, remotePort, req));
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerConnect(nullptr, 16, remoteAddr, remotePort, req));
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerConnect(data, 16, remoteAddr, remotePort, nullptr));
+
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerAnnounce(data, 99, remoteAddr, remotePort, req));
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerAnnounce(nullptr, 100, remoteAddr, remotePort, req));
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerAnnounce(data, 100, remoteAddr, remotePort, nullptr));
+
+  req->infohash.push_back('x');
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerAnnounce(data, 100, remoteAddr, remotePort, req));
+  req->infohash.pop_back();
+  req->peerId.pop_back();
+  CPPUNIT_ASSERT_EQUAL(
+      (ssize_t)-1,
+      createUDPTrackerAnnounce(data, 100, remoteAddr, remotePort, req));
+
+  CPPUNIT_ASSERT_EQUAL(std::string("unchanged"), remoteAddr);
+  CPPUNIT_ASSERT_EQUAL((uint16_t)1234, remotePort);
 }
 
 void UDPTrackerClientTest::testConnectFollowedByAnnounce()

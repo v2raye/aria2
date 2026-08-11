@@ -556,7 +556,9 @@ ssize_t createUDPTrackerConnect(unsigned char* data, size_t length,
                                 std::string& remoteAddr, uint16_t& remotePort,
                                 const std::shared_ptr<UDPTrackerRequest>& req)
 {
-  assert(length >= 16);
+  if (!data || length < 16 || !req) {
+    return -1;
+  }
   remoteAddr = req->remoteAddr;
   remotePort = req->remotePort;
   bittorrent::setLLIntParam(data, UDPT_INITIAL_CONNECTION_ID);
@@ -569,7 +571,10 @@ ssize_t createUDPTrackerAnnounce(unsigned char* data, size_t length,
                                  std::string& remoteAddr, uint16_t& remotePort,
                                  const std::shared_ptr<UDPTrackerRequest>& req)
 {
-  assert(length >= 100);
+  if (!data || length < 100 || !req || req->infohash.size() != 20 ||
+      req->peerId.size() != 20) {
+    return -1;
+  }
   remoteAddr = req->remoteAddr;
   remotePort = req->remotePort;
   bittorrent::setLLIntParam(data, req->connectionId);
