@@ -68,7 +68,7 @@ std::unique_ptr<Cookie> parseNsCookie(const std::string& cookieStr,
       !cookie::goodPath(vs[2].first, vs[2].second)) {
     return nullptr;
   }
-  int64_t expiryTime;
+  time_t expiryTime;
   {
     // chrome extension uses subsecond resolution for expiry time.
     double expiryTimeDouble;
@@ -76,13 +76,17 @@ std::unique_ptr<Cookie> parseNsCookie(const std::string& cookieStr,
                                   std::string(vs[4].first, vs[4].second))) {
       return nullptr;
     }
-    expiryTime = static_cast<int64_t>(expiryTimeDouble);
-  }
-  if (std::numeric_limits<time_t>::max() < expiryTime) {
-    expiryTime = std::numeric_limits<time_t>::max();
-  }
-  else if (std::numeric_limits<time_t>::min() > expiryTime) {
-    expiryTime = std::numeric_limits<time_t>::min();
+    if (expiryTimeDouble >=
+        static_cast<double>(std::numeric_limits<time_t>::max())) {
+      expiryTime = std::numeric_limits<time_t>::max();
+    }
+    else if (expiryTimeDouble <=
+             static_cast<double>(std::numeric_limits<time_t>::min())) {
+      expiryTime = std::numeric_limits<time_t>::min();
+    }
+    else {
+      expiryTime = static_cast<time_t>(expiryTimeDouble);
+    }
   }
   auto cookie = make_unique<Cookie>();
   cookie->setName(vs[5].first, vs[5].second);

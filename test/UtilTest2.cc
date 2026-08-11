@@ -451,8 +451,20 @@ void UtilTest2::testParseUIntNoThrow()
   CPPUNIT_ASSERT(util::parseUIntNoThrow(n, s));
   CPPUNIT_ASSERT_EQUAL((uint32_t)INT32_MAX, n);
   s = "2147483648";
+  CPPUNIT_ASSERT(util::parseUIntNoThrow(n, s));
+  CPPUNIT_ASSERT_EQUAL(UINT32_C(2147483648), n);
+  s = "4294967295";
+  CPPUNIT_ASSERT(util::parseUIntNoThrow(n, s));
+  CPPUNIT_ASSERT_EQUAL(UINT32_MAX, n);
+  s = "4294967296";
   CPPUNIT_ASSERT(!util::parseUIntNoThrow(n, s));
   s = "-1";
+  CPPUNIT_ASSERT(!util::parseUIntNoThrow(n, s));
+  s = "  -0";
+  CPPUNIT_ASSERT(!util::parseUIntNoThrow(n, s));
+  s = "   ";
+  CPPUNIT_ASSERT(!util::parseUIntNoThrow(n, s));
+  s = "+";
   CPPUNIT_ASSERT(!util::parseUIntNoThrow(n, s));
 }
 
@@ -995,6 +1007,10 @@ void UtilTest2::testParseDoubleNoThrow()
   CPPUNIT_ASSERT_EQUAL(-3.14, n);
 
   CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, ""));
+  CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, "   "));
+  CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, "+"));
+  CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, "nan"));
+  CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, "inf"));
   CPPUNIT_ASSERT(!util::parseDoubleNoThrow(n, "123x"));
 }
 

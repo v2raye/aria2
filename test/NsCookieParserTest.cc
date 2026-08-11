@@ -34,7 +34,7 @@ void NsCookieParserTest::testParse()
   NsCookieParser parser;
   time_t now = 0;
   auto cookies = parser.parse(A2_TEST_DIR "/nscookietest.txt", now);
-  CPPUNIT_ASSERT_EQUAL((size_t)5, cookies.size());
+  CPPUNIT_ASSERT_EQUAL((size_t)6, cookies.size());
 
   auto c = cookies[0].get();
   CPPUNIT_ASSERT_EQUAL(std::string("JSESSIONID"), c->getName());
@@ -85,6 +85,11 @@ void NsCookieParserTest::testParse()
   CPPUNIT_ASSERT(!c->getHostOnly());
   CPPUNIT_ASSERT_EQUAL(std::string("/"), c->getPath());
   CPPUNIT_ASSERT(!c->getSecure());
+
+  c = cookies[5].get();
+  CPPUNIT_ASSERT_EQUAL(std::string("huge"), c->getName());
+  CPPUNIT_ASSERT_EQUAL(std::numeric_limits<time_t>::max(), c->getExpiryTime());
+  CPPUNIT_ASSERT(c->getPersistent());
 }
 
 void NsCookieParserTest::testParse_fileNotFound()

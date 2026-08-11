@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "ServerStat.h"
@@ -194,36 +195,44 @@ bool ServerStatMan::load(const std::string& filename)
     auto sstat = std::make_shared<ServerStat>(m[S_HOST], m[S_PROTOCOL]);
 
     uint32_t uintval;
-    if (!util::parseUIntNoThrow(uintval, m[S_DL_SPEED])) {
+    if (!util::parseUIntNoThrow(uintval, m[S_DL_SPEED]) ||
+        uintval > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
       continue;
     }
-    sstat->setDownloadSpeed(uintval);
+    sstat->setDownloadSpeed(static_cast<int>(uintval));
     // Old serverstat file doesn't contains SC_AVG_SPEED
     if (!m[S_SC_AVG_SPEED].empty()) {
-      if (!util::parseUIntNoThrow(uintval, m[S_SC_AVG_SPEED])) {
+      if (!util::parseUIntNoThrow(uintval, m[S_SC_AVG_SPEED]) ||
+          uintval > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
         continue;
       }
-      sstat->setSingleConnectionAvgSpeed(uintval);
+      sstat->setSingleConnectionAvgSpeed(static_cast<int>(uintval));
     }
     // Old serverstat file doesn't contains MC_AVG_SPEED
     if (!m[S_MC_AVG_SPEED].empty()) {
-      if (!util::parseUIntNoThrow(uintval, m[S_MC_AVG_SPEED])) {
+      if (!util::parseUIntNoThrow(uintval, m[S_MC_AVG_SPEED]) ||
+          uintval > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
         continue;
       }
-      sstat->setMultiConnectionAvgSpeed(uintval);
+      sstat->setMultiConnectionAvgSpeed(static_cast<int>(uintval));
     }
     // Old serverstat file doesn't contains COUNTER_SPEED
     if (!m[S_COUNTER].empty()) {
-      if (!util::parseUIntNoThrow(uintval, m[S_COUNTER])) {
+      if (!util::parseUIntNoThrow(uintval, m[S_COUNTER]) ||
+          uintval > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
         continue;
       }
-      sstat->setCounter(uintval);
+      sstat->setCounter(static_cast<int>(uintval));
     }
-    int32_t intval;
-    if (!util::parseIntNoThrow(intval, m[S_LAST_UPDATED])) {
+    int64_t intval;
+    if (!util::parseLLIntNoThrow(intval, m[S_LAST_UPDATED]) ||
+        (!std::numeric_limits<time_t>::is_signed && intval < 0) ||
+        (sizeof(time_t) < sizeof(int64_t) &&
+         (intval < static_cast<int64_t>(std::numeric_limits<time_t>::min()) ||
+          intval > static_cast<int64_t>(std::numeric_limits<time_t>::max())))) {
       continue;
     }
-    sstat->setLastUpdated(Time(intval));
+    sstat->setLastUpdated(Time(static_cast<time_t>(intval)));
     sstat->setStatus(m[S_STATUS]);
     add(sstat);
   }

@@ -7,3 +7,5 @@ expired	FALSE	/	FALSE	1000	user	me
 badformat
 something	FALSE	/	FALSE	1463304912.5	TAX	1000
 .example.org	TRUE	/	FALSE	2147483647.123	novalue	
+huge.example.org	FALSE	/	FALSE	1e100	huge	value
+invalid.example.org	FALSE	/	FALSE	nan	invalid	value

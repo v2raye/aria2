@@ -1,6 +1,7 @@
 #include "ServerStatMan.h"
 
 #include <iostream>
+#include <limits>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -118,7 +119,11 @@ void ServerStatManTest::testLoad()
       "host=localhost, protocol=http, dl_speed=25000, sc_avg_speed=101, "
       "mc_avg_speed=102, last_updated=1210000000, counter=6, status=OK\n"
       "host=mirror, protocol=http, dl_speed=0, last_updated=1210000002, "
-      "status=ERROR\n";
+      "status=ERROR\n"
+      "host=future, protocol=https, dl_speed=1, last_updated=2147483648, "
+      "status=OK\n"
+      "host=overflow, protocol=https, dl_speed=4294967295, "
+      "last_updated=1210000003, status=OK\n";
   BufferedFile fp(filename, BufferedFile::WRITE);
   CPPUNIT_ASSERT_EQUAL((size_t)in.size(), fp.write(in.data(), in.size()));
   CPPUNIT_ASSERT(fp.close() != EOF);
@@ -141,6 +146,17 @@ void ServerStatManTest::testLoad()
   std::shared_ptr<ServerStat> mirror = ssm.find("mirror", "http");
   CPPUNIT_ASSERT(mirror);
   CPPUNIT_ASSERT_EQUAL(ServerStat::A2_ERROR, mirror->getStatus());
+
+  std::shared_ptr<ServerStat> future = ssm.find("future", "https");
+  if (std::numeric_limits<time_t>::max() > INT32_MAX) {
+    CPPUNIT_ASSERT(future);
+    CPPUNIT_ASSERT_EQUAL(static_cast<time_t>(INT64_C(2147483648)),
+                         future->getLastUpdated().getTimeFromEpoch());
+  }
+  else {
+    CPPUNIT_ASSERT(!future);
+  }
+  CPPUNIT_ASSERT(!ssm.find("overflow", "https"));
 }
 
 void ServerStatManTest::testRemoveStaleServerStat()

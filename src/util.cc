@@ -54,6 +54,7 @@
 #endif // HAVE_PWD_H
 
 #include <array>
+#include <cmath>
 #include <cerrno>
 #include <cassert>
 #include <cstring>
@@ -543,12 +544,12 @@ bool parseLong(T& res, F f, const std::string& s, int base)
   char* endptr;
   errno = 0;
   res = f(s.c_str(), &endptr, base);
-  if (errno == ERANGE) {
+  if (errno == ERANGE || endptr == s.c_str()) {
     return false;
   }
   if (*endptr != '\0') {
     for (const char *i = endptr, *eoi = s.c_str() + s.size(); i < eoi; ++i) {
-      if (!isspace(*i)) {
+      if (!isspace(static_cast<unsigned char>(*i))) {
         return false;
       }
     }
@@ -573,9 +574,16 @@ bool parseIntNoThrow(int32_t& res, const std::string& s, int base)
 
 bool parseUIntNoThrow(uint32_t& res, const std::string& s, int base)
 {
-  long int t;
-  if (parseLong(t, strtol, s, base) && t >= 0 &&
-      t <= std::numeric_limits<int32_t>::max()) {
+  auto first = std::find_if_not(std::begin(s), std::end(s), [](char c) {
+    return isspace(static_cast<unsigned char>(c));
+  });
+  if (first == std::end(s) || *first == '-') {
+    return false;
+  }
+
+  unsigned long t;
+  if (parseLong(t, strtoul, s, base) &&
+      t <= static_cast<unsigned long>(std::numeric_limits<uint32_t>::max())) {
     res = t;
     return true;
   }
@@ -606,13 +614,13 @@ bool parseDoubleNoThrow(double& res, const std::string& s)
   char* endptr;
   auto d = strtod(s.c_str(), &endptr);
 
-  if (errno == ERANGE) {
+  if (errno == ERANGE || endptr == s.c_str() || !std::isfinite(d)) {
     return false;
   }
 
   if (endptr != s.c_str() + s.size()) {
     for (auto i = std::begin(s) + (endptr - s.c_str()); i != std::end(s); ++i) {
-      if (!isspace(*i)) {
+      if (!isspace(static_cast<unsigned char>(*i))) {
         return false;
       }
     }
