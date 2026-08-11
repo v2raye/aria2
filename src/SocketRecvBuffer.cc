@@ -35,9 +35,9 @@
 #include "SocketRecvBuffer.h"
 
 #include <cstring>
-#include <cassert>
 
 #include "SocketCore.h"
+#include "DlAbortEx.h"
 #include "LogFactory.h"
 
 namespace aria2 {
@@ -63,7 +63,10 @@ ssize_t SocketRecvBuffer::recv()
 
 void SocketRecvBuffer::drain(size_t n)
 {
-  assert(pos_ + n <= last_);
+  const size_t buffered = last_ - pos_;
+  if (n > buffered) {
+    throw DL_ABORT_EX("Socket receive buffer drain exceeds buffered data.");
+  }
   pos_ += n;
   if (pos_ == last_) {
     truncateBuffer();
