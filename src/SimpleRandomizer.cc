@@ -36,10 +36,9 @@
 
 #include <sys/types.h>
 #include <unistd.h>
-#include <cstdlib>
-#include <cassert>
+#include <algorithm>
 #include <cstring>
-#include <iostream>
+#include <limits>
 
 #ifdef __APPLE__
 #  include <Security/SecRandom.h>
@@ -50,12 +49,11 @@
 #endif // HAVE_LIBGNUTLS
 
 #ifdef HAVE_OPENSSL
+#  include <openssl/err.h>
 #  include <openssl/rand.h>
 #endif // HAVE_OPENSSL
 
-#include "a2time.h"
-#include "a2functional.h"
-#include "LogFactory.h"
+#include "DlAbortEx.h"
 #include "fmt.h"
 
 namespace aria2 {
@@ -70,56 +68,82 @@ const std::unique_ptr<SimpleRandomizer>& SimpleRandomizer::getInstance()
   return randomizer_;
 }
 
-namespace {
-std::random_device rd;
-} // namespace
-
 #ifdef __MINGW32__
-SimpleRandomizer::SimpleRandomizer()
+SimpleRandomizer::SimpleRandomizer() : provider_(0)
 {
-  BOOL r = ::CryptAcquireContext(&provider_, 0, 0, PROV_RSA_FULL,
-                                 CRYPT_VERIFYCONTEXT | CRYPT_SILENT);
-  assert(r);
+  if (!::CryptAcquireContext(&provider_, 0, 0, PROV_RSA_FULL,
+                             CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+    throw DL_ABORT_EX(
+        fmt("CryptAcquireContext failed. error=%lu", GetLastError()));
+  }
 }
 #else  // !__MINGW32__
-SimpleRandomizer::SimpleRandomizer() : gen_(rd()) {}
+SimpleRandomizer::SimpleRandomizer() = default;
 #endif // !__MINGW32__
 
 SimpleRandomizer::~SimpleRandomizer()
 {
 #ifdef __MINGW32__
-  CryptReleaseContext(provider_, 0);
+  if (provider_) {
+    CryptReleaseContext(provider_, 0);
+  }
 #endif
 }
 
 long int SimpleRandomizer::getRandomNumber(long int to)
 {
-  assert(to > 0);
+  if (to <= 0) {
+    throw DL_ABORT_EX("Random number upper bound must be positive.");
+  }
   return std::uniform_int_distribution<long int>(0, to - 1)(*this);
 }
 
 void SimpleRandomizer::getRandomBytes(unsigned char* buf, size_t len)
 {
+  if (len == 0) {
+    return;
+  }
+  if (!buf) {
+    throw DL_ABORT_EX("Random byte output buffer is null.");
+  }
+
 #ifdef __MINGW32__
-  BOOL r = CryptGenRandom(provider_, len, reinterpret_cast<BYTE*>(buf));
-  if (!r) {
-    assert(r);
-    abort();
+  size_t offset = 0;
+  while (offset < len) {
+    const auto chunk = static_cast<DWORD>(std::min(
+        len - offset,
+        static_cast<size_t>(std::numeric_limits<DWORD>::max())));
+    if (!CryptGenRandom(provider_, chunk,
+                        reinterpret_cast<BYTE*>(buf + offset))) {
+      throw DL_ABORT_EX(fmt("CryptGenRandom failed. error=%lu", GetLastError()));
+    }
+    offset += chunk;
   }
 #elif defined(__APPLE__)
-  auto rv = SecRandomCopyBytes(kSecRandomDefault, len, buf);
-  assert(errSecSuccess == rv);
+  const auto rv = SecRandomCopyBytes(kSecRandomDefault, len, buf);
+  if (rv != errSecSuccess) {
+    throw DL_ABORT_EX(fmt("SecRandomCopyBytes failed. error=%d", rv));
+  }
 #elif defined(HAVE_LIBGNUTLS)
-  auto rv = gnutls_rnd(GNUTLS_RND_RANDOM, buf, len);
+  const auto rv = gnutls_rnd(GNUTLS_RND_RANDOM, buf, len);
   if (rv != 0) {
-    assert(0 == rv);
-    abort();
+    const char* reason = gnutls_strerror(rv);
+    throw DL_ABORT_EX(fmt("gnutls_rnd failed. error=%d, cause:%s", rv,
+                          reason ? reason : "unknown error"));
   }
 #elif defined(HAVE_OPENSSL)
-  auto rv = RAND_bytes(buf, len);
-  if (rv != 1) {
-    assert(1 == rv);
-    abort();
+  size_t offset = 0;
+  while (offset < len) {
+    const auto chunk = static_cast<int>(std::min(
+        len - offset,
+        static_cast<size_t>(std::numeric_limits<int>::max())));
+    if (RAND_bytes(buf + offset, chunk) != 1) {
+      const auto error = ERR_get_error();
+      throw DL_ABORT_EX(
+          fmt("RAND_bytes failed. cause:%s",
+              error ? ERR_error_string(error, nullptr) : "unknown error"));
+    }
+    offset += chunk;
   }
 #else
   constexpr static size_t blocklen = 256;
@@ -129,9 +153,8 @@ void SimpleRandomizer::getRandomBytes(unsigned char* buf, size_t len)
   for (size_t i = 0; i < iter; ++i) {
     auto rv = getentropy(p, blocklen);
     if (rv != 0) {
-      std::cerr << "getentropy: " << strerror(errno) << std::endl;
-      assert(0);
-      abort();
+      throw DL_ABORT_EX(
+          fmt("getentropy failed. cause:%s", strerror(errno)));
     }
 
     p += blocklen;
@@ -144,9 +167,7 @@ void SimpleRandomizer::getRandomBytes(unsigned char* buf, size_t len)
 
   auto rv = getentropy(p, rem);
   if (rv != 0) {
-    std::cerr << "getentropy: " << strerror(errno) << std::endl;
-    assert(0);
-    abort();
+    throw DL_ABORT_EX(fmt("getentropy failed. cause:%s", strerror(errno)));
   }
 #endif // !__MINGW32__ && !__APPLE__ && !HAVE_OPENSSL && !HAVE_LIBGNUTLS
 }

@@ -54,8 +54,6 @@ private:
 private:
 #ifdef __MINGW32__
   HCRYPTPROV provider_;
-#else
-  std::mt19937 gen_;
 #endif // ! __MINGW32__
 
 public:

@@ -39,15 +39,19 @@
 
 #include <cppunit/extensions/HelperMacros.h>
 
+#include "DlAbortEx.h"
+
 namespace aria2 {
 
 class SimpleRandomizerTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(SimpleRandomizerTest);
   CPPUNIT_TEST(testGetRandomBytes);
+  CPPUNIT_TEST(testInvalidArguments);
   CPPUNIT_TEST_SUITE_END();
 
 public:
   void testGetRandomBytes();
+  void testInvalidArguments();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(SimpleRandomizerTest);
@@ -65,6 +69,28 @@ void SimpleRandomizerTest::testGetRandomBytes()
   }
 
   CPPUNIT_ASSERT_EQUAL(n, set.size());
+}
+
+void SimpleRandomizerTest::testInvalidArguments()
+{
+  auto& randomizer = SimpleRandomizer::getInstance();
+  randomizer->getRandomBytes(nullptr, 0);
+
+  try {
+    randomizer->getRandomBytes(nullptr, 1);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    randomizer->getRandomNumber(0);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
 }
 
 } // namespace aria2
