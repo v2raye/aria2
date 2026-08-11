@@ -185,9 +185,7 @@ jobs:
           docker build \
             --build-arg "HOST=${{ matrix.host }}" \
             --build-arg "ARIA2_VERSION=$RELEASE_TAG" \
-            --build-arg "ARIA2_REF=refs/tags/$RELEASE_TAG" \
             --build-arg "ARIA2_REPOSITORY=https://github.com/${GITHUB_REPOSITORY}.git" \
-            --build-arg "ARIA2_REPOSITORY_API=https://api.github.com/repos/${GITHUB_REPOSITORY}" \
             --tag "$image" \
             --file Dockerfile.mingw .
 

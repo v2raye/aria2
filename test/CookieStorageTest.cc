@@ -294,7 +294,7 @@ void CookieStorageTest::testLoad()
 
   st.load(A2_TEST_DIR "/nscookietest.txt", 1001);
 
-  CPPUNIT_ASSERT_EQUAL((size_t)4, st.size());
+  CPPUNIT_ASSERT_EQUAL((size_t)5, st.size());
 
   auto cookies = dumpCookie(st);
 
@@ -319,6 +319,16 @@ void CookieStorageTest::testLoad()
   CPPUNIT_ASSERT(!c->getSecure());
 
   c = cookies[2];
+  CPPUNIT_ASSERT_EQUAL(std::string("huge"), c->getName());
+  CPPUNIT_ASSERT_EQUAL(std::string("value"), c->getValue());
+  CPPUNIT_ASSERT_EQUAL(std::numeric_limits<time_t>::max(), c->getExpiryTime());
+  CPPUNIT_ASSERT(c->getPersistent());
+  CPPUNIT_ASSERT_EQUAL(std::string("/"), c->getPath());
+  CPPUNIT_ASSERT_EQUAL(std::string("huge.example.org"), c->getDomain());
+  CPPUNIT_ASSERT(c->getHostOnly());
+  CPPUNIT_ASSERT(!c->getSecure());
+
+  c = cookies[3];
   CPPUNIT_ASSERT_EQUAL(std::string("JSESSIONID"), c->getName());
   CPPUNIT_ASSERT_EQUAL(std::string("123456789"), c->getValue());
   CPPUNIT_ASSERT_EQUAL((time_t)2147483647, c->getExpiryTime());
@@ -327,7 +337,7 @@ void CookieStorageTest::testLoad()
   CPPUNIT_ASSERT(c->getHostOnly());
   CPPUNIT_ASSERT(c->getSecure());
 
-  c = cookies[3];
+  c = cookies[4];
   CPPUNIT_ASSERT_EQUAL(std::string("TAX"), c->getName());
   CPPUNIT_ASSERT_EQUAL(std::string("1000"), c->getValue());
   CPPUNIT_ASSERT_EQUAL((time_t)1463304912, c->getExpiryTime());

@@ -63,7 +63,7 @@ void BufferedFileTest::testEmbeddedNul()
   f.remove();
 
   BufferedFile wr(f.getPath().c_str(), IOFile::WRITE);
-  const char data[] = {'\0', '\n'};
+  const char data[] = {'\0', '\n', 'a', '\n'};
   CPPUNIT_ASSERT_EQUAL(sizeof(data), wr.write(data, sizeof(data)));
   wr.close();
 
