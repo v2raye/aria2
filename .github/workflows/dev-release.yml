@@ -1,0 +1,280 @@
+name: dev release
+
+on:
+  push:
+    tags:
+      - 'aria2-dev-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing aria2-dev-* tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Verify tag and branch
+        id: release
+        shell: bash
+        run: |
+          case "$RELEASE_TAG" in
+            aria2-dev-*) ;;
+            *)
+              echo "Release tag must match aria2-dev-*" >&2
+              exit 1
+              ;;
+          esac
+
+          git fetch origin dev:refs/remotes/origin/dev
+
+          if [ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" != tag ]; then
+            echo "Release tag must be an annotated tag" >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$RELEASE_TAG^{}" refs/remotes/origin/dev; then
+            echo "Release tag must point to a commit contained in dev" >&2
+            exit 1
+          fi
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux x86_64
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake autopoint autotools-dev libtool pkg-config \
+            g++ libssl-dev libc-ares-dev zlib1g-dev libsqlite3-dev \
+            libssh2-1-dev libxml2-dev libcppunit-dev xz-utils
+
+      - name: Configure, build, and test
+        run: |
+          autoreconf -i
+          ./configure \
+            --without-gnutls \
+            --with-openssl \
+            --disable-nls
+          make -j"$(nproc)" check
+
+      - name: Package
+        shell: bash
+        run: |
+          package="${RELEASE_TAG}-linux-x86_64"
+          mkdir -p "dist/$package"
+          install -m 755 src/aria2c "dist/$package/aria2c"
+          cp AUTHORS COPYING ChangeLog LICENSE.OpenSSL NEWS README.rst \
+            "dist/$package/"
+          strip "dist/$package/aria2c"
+          tar -C dist -cJf "dist/$package.tar.xz" "$package"
+          rm -rf "dist/$package"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-x86_64
+          path: dist/*.tar.xz
+          if-no-files-found: error
+
+  macos:
+    name: macOS
+    needs: validate
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install dependencies
+        run: |
+          brew install cppunit gettext libssh2 c-ares sqlite3 \
+            autoconf automake pkg-config libtool
+
+      - name: Configure, build, and test
+        run: |
+          autoreconf -i
+          ./configure \
+            --without-openssl \
+            --without-gnutls \
+            --with-appletls \
+            --disable-nls
+          make -j"$(sysctl -n hw.ncpu)" check
+
+      - name: Package
+        shell: bash
+        run: |
+          arch="$(uname -m)"
+          package="${RELEASE_TAG}-macos-${arch}"
+          mkdir -p "dist/$package"
+          install -m 755 src/aria2c "dist/$package/aria2c"
+          cp AUTHORS COPYING ChangeLog LICENSE.OpenSSL NEWS README.rst \
+            "dist/$package/"
+          strip -x "dist/$package/aria2c"
+          tar -C dist -czf "dist/$package.tar.gz" "$package"
+          rm -rf "dist/$package"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Windows ${{ matrix.label }}
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: i686-w64-mingw32
+            label: i686
+          - host: x86_64-w64-mingw32
+            label: x86_64
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Build static executable
+        shell: bash
+        run: |
+          image="aria2-dev-mingw-${{ matrix.label }}"
+          docker build \
+            --build-arg "HOST=${{ matrix.host }}" \
+            --build-arg "ARIA2_VERSION=$RELEASE_TAG" \
+            --build-arg "ARIA2_REF=refs/tags/$RELEASE_TAG" \
+            --build-arg "ARIA2_REPOSITORY=https://github.com/${GITHUB_REPOSITORY}.git" \
+            --build-arg "ARIA2_REPOSITORY_API=https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+            --tag "$image" \
+            --file Dockerfile.mingw .
+
+          container="$(docker create "$image")"
+          mkdir -p mingw-out
+          docker cp "$container:/aria2/src/aria2c.exe" mingw-out/aria2c.exe
+          docker rm "$container"
+
+      - name: Package
+        shell: bash
+        run: |
+          package="${RELEASE_TAG}-windows-${{ matrix.label }}"
+          mkdir -p "dist/$package"
+          install -m 755 mingw-out/aria2c.exe "dist/$package/aria2c.exe"
+          cp AUTHORS COPYING ChangeLog LICENSE.OpenSSL NEWS README.rst README.mingw \
+            "dist/$package/"
+          cd dist
+          zip -9 -r "$package.zip" "$package"
+          rm -rf "$package"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-${{ matrix.label }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  source:
+    name: Source archive
+    needs: validate
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Package source
+        run: |
+          mkdir -p dist
+          git archive \
+            --format=tar.gz \
+            --prefix="$RELEASE_TAG/" \
+            --output="dist/$RELEASE_TAG-source.tar.gz" \
+            "$RELEASE_TAG^{}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: source
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: [validate, linux, macos, windows, source]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: '*'
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums and notes
+        shell: bash
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cd ..
+          git for-each-ref \
+            --format='%(contents)' \
+            "refs/tags/$RELEASE_TAG" > release-notes.md
+
+      - name: Create prerelease
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --verify-tag \
+              --prerelease \
+              --title "$RELEASE_TAG" \
+              --notes-file release-notes.md
+          fi
