@@ -48,6 +48,7 @@
 #include "fmt.h"
 #include "DiskAdaptor.h"
 #include "MessageDigest.h"
+#include "DlAbortEx.h"
 
 namespace aria2 {
 
@@ -335,22 +336,26 @@ void Piece::updateWrCache(WrDiskCache* diskCache, unsigned char* data,
                           size_t offset, size_t len, size_t capacity,
                           int64_t goff)
 {
+  std::unique_ptr<unsigned char[]> dataOwner(data);
   if (!diskCache) {
     return;
   }
   assert(wrCache_);
   A2_LOG_DEBUG(fmt("updateWrCache entry=%p", wrCache_.get()));
-  auto cell = new WrDiskCacheEntry::DataCell();
+  auto cell = make_unique<WrDiskCacheEntry::DataCell>();
   cell->goff = goff;
-  cell->data = data;
+  cell->data = dataOwner.get();
   cell->offset = offset;
   cell->len = len;
   cell->capacity = capacity;
-  bool rv;
-  rv = wrCache_->cacheData(cell);
-  assert(rv);
-  rv = diskCache->update(wrCache_.get(), len);
-  assert(rv);
+  if (!wrCache_->cacheData(cell.get())) {
+    throw DL_ABORT_EX("Failed to cache write data.");
+  }
+  cell.release();
+  dataOwner.release();
+  if (!diskCache->update(wrCache_.get(), len)) {
+    throw DL_ABORT_EX("Failed to update write cache.");
+  }
 }
 
 size_t Piece::appendWrCache(WrDiskCache* diskCache, int64_t goff,

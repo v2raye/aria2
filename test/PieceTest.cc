@@ -8,6 +8,7 @@
 #include "DirectDiskAdaptor.h"
 #include "ByteArrayDiskWriter.h"
 #include "WrDiskCache.h"
+#include "RecoverableException.h"
 
 namespace aria2 {
 
@@ -18,6 +19,7 @@ class PieceTest : public CppUnit::TestFixture {
   CPPUNIT_TEST(testGetCompletedLength);
   CPPUNIT_TEST(testFlushWrCache);
   CPPUNIT_TEST(testAppendWrCache);
+  CPPUNIT_TEST(testRejectDuplicateWrCache);
 
   CPPUNIT_TEST(testGetDigestWithWrCache);
   CPPUNIT_TEST(testUpdateHash);
@@ -41,6 +43,7 @@ public:
   void testGetCompletedLength();
   void testFlushWrCache();
   void testAppendWrCache();
+  void testRejectDuplicateWrCache();
 
   void testGetDigestWithWrCache();
   void testUpdateHash();
@@ -113,6 +116,31 @@ void PieceTest::testAppendWrCache()
   CPPUNIT_ASSERT_EQUAL((size_t)3, alen);
   p.flushWrCache(&dc);
   CPPUNIT_ASSERT_EQUAL(std::string("foobar"), writer_->getString());
+}
+
+void PieceTest::testRejectDuplicateWrCache()
+{
+  Piece p(0, 1_k);
+  WrDiskCache dc(1_k);
+  p.initWrCache(&dc, adaptor_);
+
+  auto first = new unsigned char[3];
+  memcpy(first, "foo", 3);
+  p.updateWrCache(&dc, first, 0, 3, 0);
+
+  auto duplicate = new unsigned char[3];
+  memcpy(duplicate, "bar", 3);
+  try {
+    p.updateWrCache(&dc, duplicate, 0, 3, 0);
+    CPPUNIT_FAIL("Duplicate write cache data must be rejected.");
+  }
+  catch (RecoverableException&) {
+    // success
+  }
+
+  CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), dc.getSize());
+  p.clearWrCache(&dc);
+  p.releaseWrCache(&dc);
 }
 
 void PieceTest::testGetDigestWithWrCache()
