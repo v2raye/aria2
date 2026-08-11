@@ -795,8 +795,10 @@ restart:
       version = TLS_PROTO_TLS12;
       break;
     default:
-      assert(0);
-      abort();
+      A2_LOG_ERROR("WinTLS: Negotiated an unsupported TLS protocol version");
+      status_ = SEC_E_ILLEGAL_MESSAGE;
+      state_ = st_error;
+      return TLS_ERR_ERROR;
     }
     return TLS_ERR_OK;
   }

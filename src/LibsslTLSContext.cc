@@ -34,7 +34,6 @@
 /* copyright --> */
 #include "LibsslTLSContext.h"
 
-#include <cassert>
 #include <sstream>
 
 #include <openssl/err.h>
@@ -126,8 +125,9 @@ OpenSSLTLSContext::OpenSSLTLSContext(TLSSessionSide side, TLSVersion minVer)
     ver_opts |= SSL_OP_NO_SSLv3;
     break;
   default:
-    assert(0);
-    abort();
+    good_ = false;
+    A2_LOG_ERROR("OpenSSL: Invalid minimum TLS version");
+    return;
   };
 
   // Disable SSLv2 and enable all workarounds for buggy servers

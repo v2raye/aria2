@@ -34,8 +34,6 @@
 /* copyright --> */
 #include "LibgnutlsTLSSession.h"
 
-#include <cassert>
-
 #include <gnutls/x509.h>
 
 #include "TLSContext.h"
@@ -146,8 +144,8 @@ int GnuTLSSession::init(sock_t sockfd)
     pri += ":-VERS-SSL3.0";
     break;
   default:
-    assert(0);
-    abort();
+    rv_ = GNUTLS_E_INVALID_REQUEST;
+    return TLS_ERR_ERROR;
   };
   rv_ = gnutls_priority_set_direct(sslSession_, pri.c_str(), &err);
 #endif

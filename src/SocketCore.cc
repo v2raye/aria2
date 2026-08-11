@@ -985,8 +985,9 @@ bool SocketCore::tlsHandshake(TLSContext* tlsctx, const std::string& hostname)
         tlsVersion = A2_V_TLS13;
         break;
       default:
-        assert(0);
-        abort();
+        throw DL_ABORT_EX(
+            fmt(EX_SSL_INIT_FAILURE,
+                "TLS backend returned an unsupported protocol version"));
       }
 
       auto peerInfo = ss.str();
