@@ -69,8 +69,10 @@ void BufferedFileTest::testEmbeddedNul()
 
   {
     BufferedFile rd(f.getPath().c_str(), IOFile::READ);
-    CPPUNIT_ASSERT_EQUAL(std::string(), rd.getLine());
+    // strlen() sees the leading NUL as an empty chunk, so getLine() keeps
+    // reading and returns the next text chunk without indexing before buf.
     CPPUNIT_ASSERT_EQUAL(std::string("a"), rd.getLine());
+    CPPUNIT_ASSERT_EQUAL(std::string(), rd.getLine());
   }
 
   {
