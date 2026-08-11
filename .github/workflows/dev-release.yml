@@ -86,7 +86,10 @@ jobs:
             --without-gnutls \
             --with-openssl \
             --disable-nls
-          make -j"$(nproc)" check
+          if ! make -j"$(nproc)" check; then
+            cat test/test-suite.log
+            exit 1
+          fi
 
       - name: Package
         shell: bash
@@ -131,7 +134,10 @@ jobs:
             --without-gnutls \
             --with-appletls \
             --disable-nls
-          make -j"$(sysctl -n hw.ncpu)" check
+          if ! make -j"$(sysctl -n hw.ncpu)" check; then
+            cat test/test-suite.log
+            exit 1
+          fi
 
       - name: Package
         shell: bash
