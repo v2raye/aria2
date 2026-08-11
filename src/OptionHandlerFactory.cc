@@ -512,7 +512,15 @@ std::vector<OptionHandler*> OptionHandlerFactory::createOptionHandlers()
   {
     OptionHandler* op(new ParameterOptionHandler(
         PREF_MIN_TLS_VERSION, TEXT_MIN_TLS_VERSION, A2_V_TLS12,
+#  ifdef HAVE_WINTLS
+        // The current WinTLS implementation uses the legacy SCHANNEL_CRED
+        // interface, which only configures TLS 1.1 and TLS 1.2.  Reject TLS
+        // 1.3 during option parsing instead of passing an unsupported value to
+        // WinTLSContext.
+        {A2_V_TLS11, A2_V_TLS12}));
+#  else  // !HAVE_WINTLS
         {A2_V_TLS11, A2_V_TLS12, A2_V_TLS13}));
+#  endif // !HAVE_WINTLS
     op->addTag(TAG_ADVANCED);
     handlers.push_back(op);
   }
