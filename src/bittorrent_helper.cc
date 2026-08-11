@@ -790,7 +790,7 @@ void checkIndex(size_t index, size_t pieces)
 
 void checkBegin(int32_t begin, int32_t pieceLength)
 {
-  if (!(begin < pieceLength)) {
+  if (begin < 0 || begin >= pieceLength) {
     throw DL_ABORT_EX(fmt("Invalid begin: %d", begin));
   }
 }
@@ -801,18 +801,15 @@ void checkLength(int32_t length)
     throw DL_ABORT_EX(fmt("Length too long: %d > %dKB", length,
                           static_cast<int32_t>(MAX_BLOCK_LENGTH / 1024)));
   }
-  if (length == 0) {
+  if (length <= 0) {
     throw DL_ABORT_EX(fmt("Invalid length: %d", length));
   }
 }
 
 void checkRange(int32_t begin, int32_t length, int32_t pieceLength)
 {
-  if (!(0 < length)) {
-    throw DL_ABORT_EX(fmt("Invalid range: begin=%d, length=%d", begin, length));
-  }
-  int32_t end = begin + length;
-  if (!(end <= pieceLength)) {
+  if (begin < 0 || length <= 0 || pieceLength < 0 || begin > pieceLength ||
+      length > pieceLength - begin) {
     throw DL_ABORT_EX(fmt("Invalid range: begin=%d, length=%d", begin, length));
   }
 }

@@ -1,6 +1,7 @@
 #include "BtRequestMessage.h"
 
 #include <cstring>
+#include <limits>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -36,6 +37,9 @@ class BtRequestMessageTest : public CppUnit::TestFixture {
   CPPUNIT_TEST(testToString);
   CPPUNIT_TEST(testValidate);
   CPPUNIT_TEST(testValidate_lengthTooLong);
+  CPPUNIT_TEST(testValidate_negativeBegin);
+  CPPUNIT_TEST(testValidate_negativeLength);
+  CPPUNIT_TEST(testValidate_rangeOverflow);
   CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -53,6 +57,9 @@ public:
   void testToString();
   void testValidate();
   void testValidate_lengthTooLong();
+  void testValidate_negativeBegin();
+  void testValidate_negativeLength();
+  void testValidate_rangeOverflow();
 
   class MockPieceStorage2 : public MockPieceStorage {
   public:
@@ -278,6 +285,46 @@ void BtRequestMessageTest::testValidate_lengthTooLong()
         "Length too long: " + util::uitos(MAX_BLOCK_LENGTH + 1) + " > " +
             util::uitos(MAX_BLOCK_LENGTH / 1024) + "KB",
         std::string(e.what()));
+  }
+}
+
+void BtRequestMessageTest::testValidate_negativeBegin()
+{
+  BtRequestMessage msg(0, -1, 16_k);
+  msg.setBtMessageValidator(
+      make_unique<RangeBtMessageValidator>(&msg, 1_k, 256_k));
+  try {
+    msg.validate();
+    CPPUNIT_FAIL("exception must be thrown.");
+  }
+  catch (DlAbortEx&) {
+  }
+}
+
+void BtRequestMessageTest::testValidate_negativeLength()
+{
+  BtRequestMessage msg(0, 0, -1);
+  msg.setBtMessageValidator(
+      make_unique<RangeBtMessageValidator>(&msg, 1_k, 256_k));
+  try {
+    msg.validate();
+    CPPUNIT_FAIL("exception must be thrown.");
+  }
+  catch (DlAbortEx&) {
+  }
+}
+
+void BtRequestMessageTest::testValidate_rangeOverflow()
+{
+  const auto max = std::numeric_limits<int32_t>::max();
+  BtRequestMessage msg(0, max - 1, 16);
+  msg.setBtMessageValidator(
+      make_unique<RangeBtMessageValidator>(&msg, 1, max));
+  try {
+    msg.validate();
+    CPPUNIT_FAIL("exception must be thrown.");
+  }
+  catch (DlAbortEx&) {
   }
 }
 
