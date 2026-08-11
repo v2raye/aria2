@@ -34,9 +34,9 @@
 /* copyright --> */
 #include "RpcResponse.h"
 
-#include <cassert>
 #include <sstream>
 
+#include "DlAbortEx.h"
 #include "util.h"
 #include "json.h"
 #ifdef HAVE_ZLIB
@@ -48,6 +48,13 @@ namespace aria2 {
 namespace rpc {
 
 namespace {
+#ifndef HAVE_ZLIB
+std::string gzipUnavailable()
+{
+  throw DL_ABORT_EX("RPC gzip compression is unavailable in this build.");
+}
+#endif // !HAVE_ZLIB
+
 template <typename OutputStream>
 void encodeValue(const ValueBase* value, OutputStream& o)
 {
@@ -141,7 +148,7 @@ std::string toXml(const RpcResponse& res, bool gzip)
     o.init();
     return encodeAll(o, res.code, res.param.get());
 #else  // !HAVE_ZLIB
-    abort();
+    return gzipUnavailable();
 #endif // !HAVE_ZLIB
   }
   else {
@@ -187,7 +194,7 @@ std::string toJson(const RpcResponse& res, const std::string& callback,
     return encodeJsonAll(o, res.code, res.param.get(), res.id.get(), callback)
         .str();
 #else  // !HAVE_ZLIB
-    abort();
+    return gzipUnavailable();
 #endif // !HAVE_ZLIB
   }
   else {
@@ -234,7 +241,7 @@ std::string toJsonBatch(const std::vector<RpcResponse>& results,
     o.init();
     return encodeJsonBatchAll(o, results, callback).str();
 #else  // !HAVE_ZLIB
-    abort();
+    return gzipUnavailable();
 #endif // !HAVE_ZLIB
   }
   else {

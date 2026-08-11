@@ -2,6 +2,8 @@
 
 #include <cppunit/extensions/HelperMacros.h>
 
+#include "DlAbortEx.h"
+
 namespace aria2 {
 
 namespace rpc {
@@ -12,6 +14,9 @@ class RpcResponseTest : public CppUnit::TestFixture {
 #ifdef ENABLE_XML_RPC
   CPPUNIT_TEST(testToXml);
 #endif // ENABLE_XML_RPC
+#ifndef HAVE_ZLIB
+  CPPUNIT_TEST(testGZipUnavailable);
+#endif // !HAVE_ZLIB
   CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -19,6 +24,9 @@ public:
 #ifdef ENABLE_XML_RPC
   void testToXml();
 #endif // ENABLE_XML_RPC
+#ifndef HAVE_ZLIB
+  void testGZipUnavailable();
+#endif // !HAVE_ZLIB
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(RpcResponseTest);
@@ -127,6 +135,40 @@ void RpcResponseTest::testToXml()
       s);
 }
 #endif // ENABLE_XML_RPC
+
+#ifndef HAVE_ZLIB
+void RpcResponseTest::testGZipUnavailable()
+{
+  RpcResponse res(0, RpcResponse::AUTHORIZED, String::g("ok"), Null::g());
+
+  try {
+    toJson(res, "", true);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  std::vector<RpcResponse> results;
+  results.emplace_back(0, RpcResponse::AUTHORIZED, String::g("ok"),
+                       Null::g());
+  try {
+    toJsonBatch(results, "", true);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    toXml(res, true);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+}
+#endif // !HAVE_ZLIB
 
 } // namespace rpc
 
