@@ -1,6 +1,7 @@
 #include "PeerConnection.h"
 
 #include <cstring>
+#include <vector>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -14,11 +15,13 @@ class PeerConnectionTest : public CppUnit::TestFixture {
 
   CPPUNIT_TEST_SUITE(PeerConnectionTest);
   CPPUNIT_TEST(testReserveBuffer);
+  CPPUNIT_TEST(testPresetBufferExpands);
   CPPUNIT_TEST(testRejectOversizedPayload);
   CPPUNIT_TEST_SUITE_END();
 
 public:
   void testReserveBuffer();
+  void testPresetBufferExpands();
   void testRejectOversizedPayload();
 };
 
@@ -37,6 +40,24 @@ void PeerConnectionTest::testReserveBuffer()
   CPPUNIT_ASSERT_EQUAL(newLength, con.getBufferCapacity());
   CPPUNIT_ASSERT_EQUAL((size_t)3, con.getBufferLength());
   CPPUNIT_ASSERT(memcmp("foo", con.getBuffer(), 3) == 0);
+}
+
+void PeerConnectionTest::testPresetBufferExpands()
+{
+  PeerConnection con(1, std::shared_ptr<Peer>(), std::shared_ptr<SocketCore>());
+  std::vector<unsigned char> data(MAX_BUFFER_CAPACITY + 1, 'x');
+  con.presetBuffer(data.data(), data.size());
+
+  CPPUNIT_ASSERT_EQUAL(data.size(), con.getBufferCapacity());
+  CPPUNIT_ASSERT_EQUAL(data.size(), con.getBufferLength());
+  CPPUNIT_ASSERT(memcmp(data.data(), con.getBuffer(), data.size()) == 0);
+
+  try {
+    con.presetBuffer(nullptr, 1);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+  }
 }
 
 void PeerConnectionTest::testRejectOversizedPayload()

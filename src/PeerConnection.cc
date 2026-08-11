@@ -254,8 +254,13 @@ void PeerConnection::enableEncryption(std::unique_ptr<ARC4Encryptor> encryptor,
 
 void PeerConnection::presetBuffer(const unsigned char* data, size_t length)
 {
-  size_t nwrite = std::min(bufferCapacity_, length);
-  std::copy_n(data, nwrite, resbuf_.get());
+  if (length != 0 && !data) {
+    throw DL_ABORT_EX("Null preset buffer.");
+  }
+  reserveBuffer(length);
+  if (length != 0) {
+    std::copy_n(data, length, resbuf_.get());
+  }
   resbufLength_ = length;
 }
 
