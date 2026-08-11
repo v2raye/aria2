@@ -36,69 +36,13 @@
 #ifndef WIN_TLS_SESSION_H
 #define WIN_TLS_SESSION_H
 
-#include <vector>
 #include <array>
 #include "common.h"
 #include "TLSSession.h"
 #include "WinTLSContext.h"
+#include "WinTLSBuffer.h"
 
 namespace aria2 {
-
-namespace wintls {
-struct Buffer {
-private:
-  size_t off_, free_, cap_;
-  std::vector<char> buf_;
-
-public:
-  inline Buffer() : off_(0), free_(0), cap_(0) {}
-
-  inline size_t size() const { return off_; }
-
-  inline size_t free() const { return free_; }
-
-  inline void resize(size_t len)
-  {
-    if (cap_ >= len) {
-      return;
-    }
-    buf_.resize(len);
-    cap_ = buf_.size();
-    free_ = cap_ - off_;
-  }
-
-  inline char* data() { return buf_.data(); }
-
-  inline char* end() { return buf_.data() + off_; }
-
-  inline void eat(size_t len)
-  {
-    off_ -= len;
-    if (off_) {
-      memmove(buf_.data(), buf_.data() + len, off_);
-    }
-    free_ = cap_ - off_;
-  }
-
-  inline void clear() { eat(off_); }
-
-  inline void advance(size_t len)
-  {
-    off_ += len;
-    free_ = cap_ - off_;
-  }
-
-  inline void write(const void* data, size_t len)
-  {
-    if (!len) {
-      return;
-    }
-    resize(off_ + len);
-    memcpy(end(), data, len);
-    advance(len);
-  }
-};
-} // namespace wintls
 
 class TLSBuffer : public ::SecBuffer {
 public:

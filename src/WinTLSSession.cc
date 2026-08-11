@@ -36,6 +36,7 @@
 #include "WinTLSSession.h"
 
 #include <cassert>
+#include <limits>
 #include <sstream>
 
 #include "LogFactory.h"
@@ -478,7 +479,12 @@ ssize_t WinTLSSession::readData(void* data, size_t len)
   }
 
   // Read as many bytes as available from the connection, up to len + 4k.
-  readBuf_.resize(len + 4_k);
+  if (len > std::numeric_limits<size_t>::max() - 4_k ||
+      !readBuf_.resize(len + 4_k)) {
+    status_ = SEC_E_INSUFFICIENT_MEMORY;
+    state_ = st_error;
+    return TLS_ERR_ERROR;
+  }
   while (readBuf_.free()) {
     ssize_t read = ::recv(sockfd_, readBuf_.end(), readBuf_.free(), 0);
     errno = ::WSAGetLastError();
@@ -499,7 +505,11 @@ ssize_t WinTLSSession::readData(void* data, size_t len)
       closeConnection();
       break;
     }
-    readBuf_.advance(read);
+    if (!readBuf_.advance(static_cast<size_t>(read))) {
+      status_ = SEC_E_INTERNAL_ERROR;
+      state_ = st_error;
+      return TLS_ERR_ERROR;
+    }
   }
 
   // Try to decrypt as many messages as possible from the readBuf_.
@@ -527,10 +537,19 @@ ssize_t WinTLSSession::readData(void* data, size_t len)
 
     // Decrypted message successfully.  Inspired from curl schannel.c.
     if (bufs[1].BufferType == SECBUFFER_DATA && bufs[1].cbBuffer > 0) {
-      decBuf_.write(bufs[1].pvBuffer, bufs[1].cbBuffer);
+      if (!decBuf_.write(bufs[1].pvBuffer, bufs[1].cbBuffer)) {
+        status_ = SEC_E_INSUFFICIENT_MEMORY;
+        state_ = st_error;
+        return TLS_ERR_ERROR;
+      }
     }
     if (bufs[3].BufferType == SECBUFFER_EXTRA && bufs[3].cbBuffer > 0) {
-      readBuf_.eat(readBuf_.size() - bufs[3].cbBuffer);
+      if (bufs[3].cbBuffer > readBuf_.size() ||
+          !readBuf_.eat(readBuf_.size() - bufs[3].cbBuffer)) {
+        status_ = SEC_E_INVALID_TOKEN;
+        state_ = st_error;
+        return TLS_ERR_ERROR;
+      }
     }
     else {
       readBuf_.clear();
@@ -617,8 +636,13 @@ restart:
     }
 
     // Queue the initial message...
-    writeBuf_.write(buf.pvBuffer, buf.cbBuffer);
+    const bool queued = writeBuf_.write(buf.pvBuffer, buf.cbBuffer);
     FreeContextBuffer(buf.pvBuffer);
+    if (!queued) {
+      status_ = SEC_E_INSUFFICIENT_MEMORY;
+      state_ = st_error;
+      return TLS_ERR_ERROR;
+    }
 
     // ... and start sending it
     state_ = st_handshake_write;
@@ -644,7 +668,11 @@ restart:
         state_ = st_error;
         return TLS_ERR_ERROR;
       }
-      writeBuf_.eat(writ);
+      if (!writeBuf_.eat(static_cast<size_t>(writ))) {
+        status_ = SEC_E_INTERNAL_ERROR;
+        state_ = st_error;
+        return TLS_ERR_ERROR;
+      }
     }
 
     if (state_ == st_handshake_write_last) {
@@ -667,7 +695,12 @@ restart:
     // Read as many bytes as possible, up to 4k new bytes.
     // We do not know how many bytes will arrive from the server at this
     // point.
-    readBuf_.resize(readBuf_.size() + 4_k);
+    if (readBuf_.size() > std::numeric_limits<size_t>::max() - 4_k ||
+        !readBuf_.resize(readBuf_.size() + 4_k)) {
+      status_ = SEC_E_INSUFFICIENT_MEMORY;
+      state_ = st_error;
+      return TLS_ERR_ERROR;
+    }
     while (readBuf_.free()) {
       ssize_t read = ::recv(sockfd_, readBuf_.end(), readBuf_.free(), 0);
       errno = ::WSAGetLastError();
@@ -688,7 +721,11 @@ restart:
         state_ = st_error;
         return TLS_ERR_ERROR;
       }
-      readBuf_.advance(read);
+      if (!readBuf_.advance(static_cast<size_t>(read))) {
+        status_ = SEC_E_INTERNAL_ERROR;
+        state_ = st_error;
+        return TLS_ERR_ERROR;
+      }
       break;
     }
     if (!readBuf_.size()) {
@@ -738,7 +775,12 @@ restart:
     // Raw bytes where not entirely consumed, i.e. readBuf_ still contains
     // unprocessed data from the next message?
     if (inbufs[1].BufferType == SECBUFFER_EXTRA && inbufs[1].cbBuffer > 0) {
-      readBuf_.eat(readBuf_.size() - inbufs[1].cbBuffer);
+      if (inbufs[1].cbBuffer > readBuf_.size() ||
+          !readBuf_.eat(readBuf_.size() - inbufs[1].cbBuffer)) {
+        status_ = SEC_E_INVALID_TOKEN;
+        state_ = st_error;
+        return TLS_ERR_ERROR;
+      }
     }
     else {
       readBuf_.clear();
@@ -747,8 +789,13 @@ restart:
     // Check if the library produced a new outgoing message and queue it.
     for (auto& buf : outbufs) {
       if (buf.BufferType == SECBUFFER_TOKEN && buf.cbBuffer > 0) {
-        writeBuf_.write(buf.pvBuffer, buf.cbBuffer);
+        const bool queued = writeBuf_.write(buf.pvBuffer, buf.cbBuffer);
         FreeContextBuffer(buf.pvBuffer);
+        if (!queued) {
+          status_ = SEC_E_INSUFFICIENT_MEMORY;
+          state_ = st_error;
+          return TLS_ERR_ERROR;
+        }
         state_ = st_handshake_write;
       }
     }

@@ -338,7 +338,7 @@ endif # HAVE_APPLETLS
 if HAVE_WINTLS
 SRCS += \
 	WinTLSContext.cc WinTLSContext.h \
-	WinTLSSession.cc WinTLSSession.h
+	WinTLSSession.cc WinTLSSession.h WinTLSBuffer.h
 endif # HAVE_WINTLS
 
 if USE_INTERNAL_BIGNUM
@@ -752,4 +752,3 @@ endif # !ENABLE_LIBARIA2
 AM_CFLAGS = @EXTRACFLAGS@
 
 AM_CXXFLAGS = @WARNCXXFLAGS@ @CXX1XCXXFLAGS@ @EXTRACXXFLAGS@
-

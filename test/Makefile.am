@@ -5,6 +5,7 @@ aria2c_SOURCES = AllTest.cc\
 	TestUtil.cc TestUtil.h\
 	SocketCoreTest.cc\
 	SocketRecvBufferTest.cc\
+	WinTLSBufferTest.cc\
 	array_funTest.cc\
 	Base64Test.cc\
 	Base32Test.cc\
