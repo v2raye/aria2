@@ -1,5 +1,7 @@
 #include "WrDiskCacheEntry.h"
 
+#include <limits>
+
 #include <cstring>
 
 #include <cppunit/extensions/HelperMacros.h>
@@ -15,6 +17,7 @@ class WrDiskCacheEntryTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(WrDiskCacheEntryTest);
   CPPUNIT_TEST(testWriteToDisk);
   CPPUNIT_TEST(testAppend);
+  CPPUNIT_TEST(testRejectInvalidCell);
   CPPUNIT_TEST(testClear);
   CPPUNIT_TEST_SUITE_END();
 
@@ -32,6 +35,7 @@ public:
 
   void testWriteToDisk();
   void testAppend();
+  void testRejectInvalidCell();
   void testClear();
 };
 
@@ -66,6 +70,32 @@ void WrDiskCacheEntryTest::testAppend()
   CPPUNIT_ASSERT_EQUAL((size_t)6, e.getSize());
 
   CPPUNIT_ASSERT_EQUAL((size_t)0, e.append(7, (const unsigned char*)"FOO", 3));
+  CPPUNIT_ASSERT_EQUAL((size_t)0, e.append(6, nullptr, 1));
+}
+
+void WrDiskCacheEntryTest::testRejectInvalidCell()
+{
+  WrDiskCacheEntry e(adaptor_);
+
+  auto cell = new WrDiskCacheEntry::DataCell{};
+  cell->goff = std::numeric_limits<int64_t>::max();
+  cell->data = new unsigned char[1];
+  cell->offset = 0;
+  cell->len = 1;
+  cell->capacity = 1;
+  CPPUNIT_ASSERT(!e.cacheData(cell));
+  delete[] cell->data;
+  delete cell;
+
+  cell = new WrDiskCacheEntry::DataCell{};
+  cell->goff = 0;
+  cell->data = new unsigned char[1];
+  cell->offset = 0;
+  cell->len = 2;
+  cell->capacity = 1;
+  CPPUNIT_ASSERT(!e.cacheData(cell));
+  delete[] cell->data;
+  delete cell;
 }
 
 void WrDiskCacheEntryTest::testClear()

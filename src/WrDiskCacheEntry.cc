@@ -35,6 +35,7 @@
 #include "WrDiskCacheEntry.h"
 
 #include <cstring>
+#include <limits>
 
 #include "DiskAdaptor.h"
 #include "RecoverableException.h"
@@ -43,6 +44,18 @@
 #include "fmt.h"
 
 namespace aria2 {
+
+namespace {
+bool validDataCell(const WrDiskCacheEntry::DataCell* cell)
+{
+  return cell && cell->goff >= 0 && cell->len <= cell->capacity &&
+         ((cell->offset == 0 && cell->capacity == 0) || cell->data) &&
+         cell->offset <=
+             std::numeric_limits<size_t>::max() - cell->capacity &&
+         cell->len <= static_cast<uint64_t>(
+                          std::numeric_limits<int64_t>::max() - cell->goff);
+}
+} // namespace
 
 WrDiskCacheEntry::WrDiskCacheEntry(
     const std::shared_ptr<DiskAdaptor>& diskAdaptor)
@@ -91,6 +104,10 @@ void WrDiskCacheEntry::clear() { deleteDataCells(); }
 
 bool WrDiskCacheEntry::cacheData(DataCell* dataCell)
 {
+  if (!validDataCell(dataCell) ||
+      dataCell->len > std::numeric_limits<size_t>::max() - size_) {
+    return false;
+  }
   A2_LOG_DEBUG(fmt("WrDiskCacheEntry cache goff=%" PRId64 ", len=%lu",
                    dataCell->goff, static_cast<unsigned long>(dataCell->len)));
   if (set_.insert(dataCell).second) {
@@ -105,13 +122,24 @@ bool WrDiskCacheEntry::cacheData(DataCell* dataCell)
 size_t WrDiskCacheEntry::append(int64_t goff, const unsigned char* data,
                                 size_t len)
 {
-  if (set_.empty()) {
+  if (set_.empty() || goff < 0 || (len != 0 && !data)) {
     return 0;
   }
   auto i = set_.end();
   --i;
-  if (static_cast<int64_t>((*i)->goff + (*i)->len) == goff) {
-    size_t wlen = std::min((*i)->capacity - (*i)->len, len);
+  if (!validDataCell(*i)) {
+    return 0;
+  }
+  const auto cellEnd = (*i)->goff + static_cast<int64_t>((*i)->len);
+  if (cellEnd == goff) {
+    const auto available = (*i)->capacity - (*i)->len;
+    size_t wlen = std::min(available, len);
+    if (wlen > std::numeric_limits<size_t>::max() - size_) {
+      return 0;
+    }
+    if (wlen == 0) {
+      return 0;
+    }
     memcpy((*i)->data + (*i)->offset + (*i)->len, data, wlen);
     (*i)->len += wlen;
     size_ += wlen;
