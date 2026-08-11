@@ -3,11 +3,13 @@
 #include <string>
 #include <cerrno>
 #include <cstring>
+#include <limits>
 
 #include <cppunit/extensions/HelperMacros.h>
 
 #include "FileEntry.h"
 #include "Exception.h"
+#include "DlAbortEx.h"
 #include "a2io.h"
 #include "array_fun.h"
 #include "TestUtil.h"
@@ -26,6 +28,7 @@ class MultiDiskAdaptorTest : public CppUnit::TestFixture {
   CPPUNIT_TEST(testUtime);
   CPPUNIT_TEST(testResetDiskWriterEntries);
   CPPUNIT_TEST(testWriteCache);
+  CPPUNIT_TEST(testInvalidRange);
   CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -45,6 +48,7 @@ public:
   void testUtime();
   void testResetDiskWriterEntries();
   void testWriteCache();
+  void testInvalidRange();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(MultiDiskAdaptorTest);
@@ -358,6 +362,38 @@ void MultiDiskAdaptorTest::testReadData()
   buf[25] = '\0';
   CPPUNIT_ASSERT_EQUAL(std::string("1234567890ABCDEFGHIJKLMNO"),
                        std::string((char*)buf));
+}
+
+void MultiDiskAdaptorTest::testInvalidRange()
+{
+  unsigned char data = 0;
+
+  try {
+    adaptor->readData(&data, 1, 0);
+    CPPUNIT_FAIL("Empty file list must be rejected");
+  }
+  catch (DlAbortEx&) {
+  }
+
+  auto entries = std::vector<std::shared_ptr<FileEntry>>{
+      std::make_shared<FileEntry>(A2_TEST_OUT_DIR "/range.txt", 1, 1)};
+  adaptor->setFileEntries(std::begin(entries), std::end(entries));
+
+  try {
+    adaptor->writeData(&data, 1, 0);
+    CPPUNIT_FAIL("Offset before first file must be rejected");
+  }
+  catch (DlAbortEx&) {
+  }
+
+  try {
+    adaptor->readData(
+        &data, static_cast<size_t>(std::numeric_limits<ssize_t>::max()) + 1,
+        1);
+    CPPUNIT_FAIL("Length exceeding ssize_t must be rejected");
+  }
+  catch (DlAbortEx&) {
+  }
 }
 
 void MultiDiskAdaptorTest::testCutTrailingGarbage()

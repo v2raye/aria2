@@ -36,6 +36,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <limits>
 #include <map>
 
 #include "DefaultDiskWriter.h"
@@ -288,12 +289,8 @@ bool isInRange(DiskWriterEntry* entry, int64_t offset)
 namespace {
 ssize_t calculateLength(DiskWriterEntry* entry, int64_t fileOffset, ssize_t rem)
 {
-  if (entry->getFileEntry()->getLength() < fileOffset + rem) {
-    return entry->getFileEntry()->getLength() - fileOffset;
-  }
-  else {
-    return rem;
-  }
+  return std::min<int64_t>(entry->getFileEntry()->getLength() - fileOffset,
+                           rem);
 }
 } // namespace
 
@@ -312,6 +309,11 @@ DiskWriterEntries::const_iterator
 findFirstDiskWriterEntry(const DiskWriterEntries& diskWriterEntries,
                          int64_t offset)
 {
+  if (diskWriterEntries.empty() ||
+      offset < diskWriterEntries.front()->getFileEntry()->getOffset()) {
+    throw DL_ABORT_EX(
+        fmt(EX_FILE_OFFSET_OUT_OF_RANGE, static_cast<int64_t>(offset)));
+  }
   auto first =
       std::upper_bound(std::begin(diskWriterEntries),
                        std::end(diskWriterEntries), offset, OffsetCompare());
@@ -322,6 +324,16 @@ findFirstDiskWriterEntry(const DiskWriterEntries& diskWriterEntries,
         fmt(EX_FILE_OFFSET_OUT_OF_RANGE, static_cast<int64_t>(offset)));
   }
   return first;
+}
+} // namespace
+
+namespace {
+ssize_t checkedLength(size_t len)
+{
+  if (len > static_cast<size_t>(std::numeric_limits<ssize_t>::max())) {
+    throw DL_ABORT_EX("Data length is too large.");
+  }
+  return static_cast<ssize_t>(len);
 }
 } // namespace
 
@@ -337,8 +349,9 @@ void throwOnDiskWriterNotOpened(DiskWriterEntry* e, int64_t offset)
 void MultiDiskAdaptor::writeData(const unsigned char* data, size_t len,
                                  int64_t offset)
 {
+  const auto remLength = checkedLength(len);
   auto first = findFirstDiskWriterEntry(diskWriterEntries_, offset);
-  ssize_t rem = len;
+  ssize_t rem = remLength;
   int64_t fileOffset = offset - (*first)->getFileEntry()->getOffset();
   for (auto i = first, eoi = diskWriterEntries_.cend(); i != eoi; ++i) {
     ssize_t writeLength = calculateLength((*i).get(), fileOffset, rem);
@@ -372,8 +385,9 @@ ssize_t MultiDiskAdaptor::readDataDropCache(unsigned char* data, size_t len,
 ssize_t MultiDiskAdaptor::readData(unsigned char* data, size_t len,
                                    int64_t offset, bool dropCache)
 {
+  const auto remLength = checkedLength(len);
   auto first = findFirstDiskWriterEntry(diskWriterEntries_, offset);
-  ssize_t rem = len;
+  ssize_t rem = remLength;
   ssize_t totalReadLength = 0;
   int64_t fileOffset = offset - (*first)->getFileEntry()->getOffset();
   for (auto i = first, eoi = diskWriterEntries_.cend(); i != eoi; ++i) {
