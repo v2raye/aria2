@@ -45,6 +45,13 @@ jobs:
               ;;
           esac
 
+          expected_version="${RELEASE_TAG#aria2-dev-}"
+          package_version="$(sed -n 's/^AC_INIT(\[aria2\],\[\([^]]*\)\].*/\1/p' configure.ac)"
+          if [ "$package_version" != "$expected_version" ]; then
+            echo "Release tag version $expected_version does not match package version $package_version" >&2
+            exit 1
+          fi
+
           git fetch origin dev:refs/remotes/origin/dev
 
           if [ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" != tag ]; then
@@ -275,9 +282,16 @@ jobs:
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" \
+              --verify-tag \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "$RELEASE_TAG" \
+              --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" dist/* \
               --verify-tag \
+              --target "$GITHUB_SHA" \
               --prerelease \
               --title "$RELEASE_TAG" \
               --notes-file release-notes.md
