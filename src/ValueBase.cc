@@ -34,20 +34,41 @@
 /* copyright --> */
 #include "ValueBase.h"
 
+#include <stdexcept>
+
 namespace aria2 {
 
 String::String(const ValueType& string) : str_{string} {}
 String::String(ValueType&& string) : str_{std::move(string)} {}
 
-String::String(const char* cstring) : str_{cstring} {}
-
-String::String(const char* data, size_t length) : str_{&data[0], &data[length]}
+String::String(const char* cstring)
 {
+  if (!cstring) {
+    throw std::invalid_argument("Null string data");
+  }
+  str_ = cstring;
+}
+
+String::String(const char* data, size_t length)
+{
+  if (!data) {
+    if (length != 0) {
+      throw std::invalid_argument("Null string data with nonzero length");
+    }
+    return;
+  }
+  str_.assign(data, length);
 }
 
 String::String(const unsigned char* data, size_t length)
-    : str_{&data[0], &data[length]}
 {
+  if (!data) {
+    if (length != 0) {
+      throw std::invalid_argument("Null string data with nonzero length");
+    }
+    return;
+  }
+  str_.assign(reinterpret_cast<const char*>(data), length);
 }
 
 String::String() {}

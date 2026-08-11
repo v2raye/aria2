@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -48,6 +49,25 @@ void ValueBaseTest::testString()
 
   String zero("");
   CPPUNIT_ASSERT_EQUAL(std::string(""), zero.s());
+
+  String nullEmpty(static_cast<const char*>(nullptr), 0);
+  CPPUNIT_ASSERT_EQUAL(std::string(""), nullEmpty.s());
+  String unsignedNullEmpty(static_cast<const unsigned char*>(nullptr), 0);
+  CPPUNIT_ASSERT_EQUAL(std::string(""), unsignedNullEmpty.s());
+
+  try {
+    String invalid(static_cast<const char*>(nullptr), 1);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (const std::invalid_argument&) {
+  }
+
+  try {
+    String invalid(static_cast<const char*>(nullptr));
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (const std::invalid_argument&) {
+  }
 
   String z;
   CPPUNIT_ASSERT_EQUAL(std::string(""), z.s());
