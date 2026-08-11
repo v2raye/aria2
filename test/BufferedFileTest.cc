@@ -12,10 +12,12 @@ class BufferedFileTest : public CppUnit::TestFixture {
 
   CPPUNIT_TEST_SUITE(BufferedFileTest);
   CPPUNIT_TEST(testOpen);
+  CPPUNIT_TEST(testEmbeddedNul);
   CPPUNIT_TEST_SUITE_END();
 
 public:
   void testOpen();
+  void testEmbeddedNul();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(BufferedFileTest);
@@ -53,6 +55,30 @@ void BufferedFileTest::testOpen()
   CPPUNIT_ASSERT_EQUAL(std::string("charlie"), std::string(buf));
 
   CPPUNIT_ASSERT(rd.eof());
+}
+
+void BufferedFileTest::testEmbeddedNul()
+{
+  File f(A2_TEST_OUT_DIR "/aria2_BufferedFileTest_testEmbeddedNul");
+  f.remove();
+
+  BufferedFile wr(f.getPath().c_str(), IOFile::WRITE);
+  const char data[] = {'\0', '\n'};
+  CPPUNIT_ASSERT_EQUAL(sizeof(data), wr.write(data, sizeof(data)));
+  wr.close();
+
+  {
+    BufferedFile rd(f.getPath().c_str(), IOFile::READ);
+    CPPUNIT_ASSERT_EQUAL(std::string(), rd.getLine());
+    CPPUNIT_ASSERT_EQUAL(std::string("a"), rd.getLine());
+  }
+
+  {
+    BufferedFile rd(f.getPath().c_str(), IOFile::READ);
+    char buf[16];
+    CPPUNIT_ASSERT(rd.getsn(buf, sizeof(buf)));
+    CPPUNIT_ASSERT_EQUAL(std::string(), std::string(buf));
+  }
 }
 
 } // namespace aria2
