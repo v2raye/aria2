@@ -1,6 +1,7 @@
 #include "BitfieldMan.h"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 #include <cppunit/extensions/HelperMacros.h>
@@ -29,6 +30,7 @@ class BitfieldManTest : public CppUnit::TestFixture {
   CPPUNIT_TEST(testIsBitSetOffsetRange);
   CPPUNIT_TEST(testGetOffsetCompletedLength);
   CPPUNIT_TEST(testGetOffsetCompletedLength_largeFile);
+  CPPUNIT_TEST(testOffsetRangeBoundaries);
   CPPUNIT_TEST(testGetMissingUnusedLength);
   CPPUNIT_TEST(testSetBitRange);
   CPPUNIT_TEST(testGetAllMissingIndexes);
@@ -65,6 +67,7 @@ public:
   void testIsBitSetOffsetRange();
   void testGetOffsetCompletedLength();
   void testGetOffsetCompletedLength_largeFile();
+  void testOffsetRangeBoundaries();
   void testGetMissingUnusedLength();
   void testSetBitRange();
   void testCountFilteredBlock();
@@ -515,6 +518,46 @@ void BitfieldManTest::testGetOffsetCompletedLength_largeFile()
   CPPUNIT_ASSERT_EQUAL(
       (int64_t)bt.getBlockLength() * 3,
       bt.getOffsetCompletedLength((1LL << 33) - bt.getBlockLength(), 1 << 24));
+}
+
+void BitfieldManTest::testOffsetRangeBoundaries()
+{
+  const auto max = std::numeric_limits<int64_t>::max();
+  BitfieldMan bt(2, 6);
+  bt.setAllBit();
+
+  CPPUNIT_ASSERT(!bt.isBitSetOffsetRange(-1, 1));
+  CPPUNIT_ASSERT(!bt.isBitSetOffsetRange(0, -1));
+  CPPUNIT_ASSERT(bt.isBitSetOffsetRange(4, max));
+  CPPUNIT_ASSERT_EQUAL((int64_t)0, bt.getOffsetCompletedLength(-1, 1));
+  CPPUNIT_ASSERT_EQUAL((int64_t)0, bt.getOffsetCompletedLength(0, -1));
+  CPPUNIT_ASSERT_EQUAL((int64_t)2, bt.getOffsetCompletedLength(4, max));
+
+  bt.addFilter(-1, max);
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(0));
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(1));
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(2));
+  bt.addFilter(4, max);
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(0));
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(1));
+  CPPUNIT_ASSERT(bt.isFilterBitSet(2));
+
+  bt.clearFilter();
+  bt.addNotFilter(4, max);
+  CPPUNIT_ASSERT(bt.isFilterBitSet(0));
+  CPPUNIT_ASSERT(bt.isFilterBitSet(1));
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(2));
+
+  bt.clearFilter();
+  bt.addNotFilter(max, max);
+  CPPUNIT_ASSERT(bt.isFilterBitSet(0));
+  CPPUNIT_ASSERT(bt.isFilterBitSet(1));
+  CPPUNIT_ASSERT(bt.isFilterBitSet(2));
+
+  bt.removeFilter(4, max);
+  CPPUNIT_ASSERT(bt.isFilterBitSet(0));
+  CPPUNIT_ASSERT(bt.isFilterBitSet(1));
+  CPPUNIT_ASSERT(!bt.isFilterBitSet(2));
 }
 
 void BitfieldManTest::testGetMissingUnusedLength()
