@@ -34,7 +34,7 @@
 /* copyright --> */
 #include "GZipDecodingStreamFilter.h"
 
-#include <cassert>
+#include <limits>
 
 #include "fmt.h"
 #include "DlAbortEx.h"
@@ -56,19 +56,20 @@ GZipDecodingStreamFilter::~GZipDecodingStreamFilter() { release(); }
 
 void GZipDecodingStreamFilter::init()
 {
-  finished_ = false;
-  release();
-  strm_ = new z_stream();
-  strm_->zalloc = Z_NULL;
-  strm_->zfree = Z_NULL;
-  strm_->opaque = Z_NULL;
-  strm_->avail_in = 0;
-  strm_->next_in = Z_NULL;
+  auto candidate = make_unique<z_stream>();
+  *candidate = {};
 
   // initialize z_stream with gzip/zlib format auto detection enabled.
-  if (Z_OK != inflateInit2(strm_, 47)) {
-    throw DL_ABORT_EX("Initializing z_stream failed.");
+  const int rv = inflateInit2(candidate.get(), 47);
+  if (rv != Z_OK) {
+    const char* reason = candidate->msg ? candidate->msg : zError(rv);
+    throw DL_ABORT_EX(
+        fmt("Initializing z_stream failed. code=%d, cause:%s", rv,
+            reason ? reason : "unknown error"));
   }
+
+  release();
+  strm_ = candidate.release();
 }
 
 void GZipDecodingStreamFilter::release()
@@ -78,6 +79,8 @@ void GZipDecodingStreamFilter::release()
     delete strm_;
     strm_ = nullptr;
   }
+  finished_ = false;
+  bytesProcessed_ = 0;
 }
 
 ssize_t
@@ -87,42 +90,75 @@ GZipDecodingStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
 {
   bytesProcessed_ = 0;
   ssize_t outlen = 0;
-  if (inlen == 0) {
+  if (!strm_) {
+    throw DL_ABORT_EX("GZipDecodingStreamFilter is not initialized.");
+  }
+  if (!getDelegate()) {
+    throw DL_ABORT_EX("GZipDecodingStreamFilter has no delegate.");
+  }
+  if (finished_ || inlen == 0) {
     return outlen;
   }
-
-  strm_->avail_in = inlen;
-  strm_->next_in = const_cast<unsigned char*>(inbuf);
-
-  unsigned char outbuf[OUTBUF_LENGTH];
-  while (1) {
-    strm_->avail_out = OUTBUF_LENGTH;
-    strm_->next_out = outbuf;
-
-    int ret = ::inflate(strm_, Z_NO_FLUSH);
-
-    if (ret == Z_STREAM_END) {
-      finished_ = true;
-    }
-    else if (ret != Z_OK && ret != Z_BUF_ERROR) {
-      throw DL_ABORT_EX(fmt("libz::inflate() failed. cause:%s", strm_->msg));
-    }
-
-    size_t produced = OUTBUF_LENGTH - strm_->avail_out;
-
-    outlen += getDelegate()->transform(out, segment, outbuf, produced);
-    if (strm_->avail_out > 0) {
-      break;
-    }
+  if (!inbuf) {
+    throw DL_ABORT_EX("GZipDecodingStreamFilter received a null input buffer.");
   }
-  assert(inlen >= strm_->avail_in);
-  bytesProcessed_ = inlen - strm_->avail_in;
+
+  size_t inputOffset = 0;
+  unsigned char outbuf[OUTBUF_LENGTH];
+  while (inputOffset < inlen && !finished_) {
+    const auto chunk = static_cast<uInt>(std::min(
+        inlen - inputOffset,
+        static_cast<size_t>(std::numeric_limits<uInt>::max())));
+    strm_->avail_in = chunk;
+    strm_->next_in = const_cast<unsigned char*>(inbuf + inputOffset);
+
+    do {
+      const auto availInBefore = strm_->avail_in;
+      strm_->avail_out = OUTBUF_LENGTH;
+      strm_->next_out = outbuf;
+
+      const int rv = ::inflate(strm_, Z_NO_FLUSH);
+      const size_t consumed = availInBefore - strm_->avail_in;
+      const size_t produced = OUTBUF_LENGTH - strm_->avail_out;
+      inputOffset += consumed;
+      bytesProcessed_ = inputOffset;
+
+      if (produced > 0) {
+        const auto written =
+            getDelegate()->transform(out, segment, outbuf, produced);
+        if (written < 0 || static_cast<size_t>(written) != produced) {
+          throw DL_ABORT_EX(
+              "GZipDecodingStreamFilter delegate did not consume all data.");
+        }
+        if (written > std::numeric_limits<ssize_t>::max() - outlen) {
+          throw DL_ABORT_EX("GZipDecodingStreamFilter output size overflow.");
+        }
+        outlen += written;
+      }
+
+      if (rv == Z_STREAM_END) {
+        finished_ = true;
+        break;
+      }
+      if (rv != Z_OK && rv != Z_BUF_ERROR) {
+        const char* reason = strm_->msg ? strm_->msg : zError(rv);
+        throw DL_ABORT_EX(fmt("libz::inflate() failed. code=%d, cause:%s", rv,
+                              reason ? reason : "unknown error"));
+      }
+      if (consumed == 0 && produced == 0) {
+        if (rv == Z_BUF_ERROR && strm_->avail_in == 0) {
+          break;
+        }
+        throw DL_ABORT_EX("libz::inflate() made no progress.");
+      }
+    } while (strm_->avail_in > 0 || strm_->avail_out == 0);
+  }
   return outlen;
 }
 
 bool GZipDecodingStreamFilter::finished()
 {
-  return finished_ && getDelegate()->finished();
+  return finished_ && getDelegate() && getDelegate()->finished();
 }
 
 const std::string& GZipDecodingStreamFilter::getName() const { return NAME; }
