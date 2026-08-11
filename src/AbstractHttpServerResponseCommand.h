@@ -71,6 +71,12 @@ public:
 
   virtual ~AbstractHttpServerResponseCommand();
 
+  // Temporarily stop watching the response socket.  This is used when a
+  // response is deliberately delayed (for example, after failed RPC
+  // authorization).  execute() will register the required events again after
+  // the delay if the response cannot be sent immediately.
+  void disableSocketCheck();
+
   virtual bool execute() CXX11_OVERRIDE;
 };
 

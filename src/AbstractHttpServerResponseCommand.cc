@@ -71,6 +71,18 @@ AbstractHttpServerResponseCommand::~AbstractHttpServerResponseCommand()
   }
 }
 
+void AbstractHttpServerResponseCommand::disableSocketCheck()
+{
+  if (readCheck_) {
+    readCheck_ = false;
+    e_->deleteSocketForReadCheck(socket_, this);
+  }
+  if (writeCheck_) {
+    writeCheck_ = false;
+    e_->deleteSocketForWriteCheck(socket_, this);
+  }
+}
+
 void AbstractHttpServerResponseCommand::updateReadWriteCheck()
 {
   if (httpServer_->wantRead()) {

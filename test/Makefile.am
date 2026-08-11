@@ -79,6 +79,7 @@ aria2c_SOURCES = AllTest.cc\
 	RpcResponseTest.cc\
 	RpcMethodTest.cc\
 	HttpServerTest.cc\
+	HttpServerResponseCommandTest.cc\
 	BufferedFileTest.cc\
 	GeomStreamPieceSelectorTest.cc\
 	SegListTest.cc\
