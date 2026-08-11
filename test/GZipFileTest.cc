@@ -12,10 +12,12 @@ class GZipFileTest : public CppUnit::TestFixture {
 
   CPPUNIT_TEST_SUITE(GZipFileTest);
   CPPUNIT_TEST(testOpen);
+  CPPUNIT_TEST(testPrintfLargeString);
   CPPUNIT_TEST_SUITE_END();
 
 public:
   void testOpen();
+  void testPrintfLargeString();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(GZipFileTest);
@@ -53,6 +55,27 @@ void GZipFileTest::testOpen()
   CPPUNIT_ASSERT_EQUAL(std::string("charlie"), std::string(buf));
 
   CPPUNIT_ASSERT(rd.eof());
+}
+
+void GZipFileTest::testPrintfLargeString()
+{
+  File f(A2_TEST_OUT_DIR "/aria2_GZipFileTest_testPrintfLargeString");
+  f.remove();
+
+  const std::string value(4096, 'x');
+  const std::string expected = value + "-42";
+  {
+    GZipFile wr(f.getPath().c_str(), GZipFile::WRITE);
+    CPPUNIT_ASSERT(wr);
+    CPPUNIT_ASSERT_EQUAL(static_cast<int>(expected.size()),
+                         wr.printf("%s-%d", value.c_str(), 42));
+  }
+
+  GZipFile rd(f.getPath().c_str(), GZipFile::READ);
+  CPPUNIT_ASSERT(rd);
+  std::string actual(expected.size(), '\0');
+  CPPUNIT_ASSERT_EQUAL(actual.size(), rd.read(&actual[0], actual.size()));
+  CPPUNIT_ASSERT_EQUAL(expected, actual);
 }
 
 } // namespace aria2

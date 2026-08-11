@@ -73,7 +73,9 @@ GZipFile::GZipFile(const char* filename, const char* mode)
         ::close(fd);
       }
     }
-    fclose(fp);
+    if (fp != stdin) {
+      fclose(fp);
+    }
   }
 }
 
@@ -146,22 +148,37 @@ int GZipFile::onFlush() { return gzflush(fp_, 0); }
 
 int GZipFile::onVprintf(const char* format, va_list va)
 {
+  if (!buf_) {
+    return -1;
+  }
+
   ssize_t len;
 
   for (;;) {
-    len = vsnprintf(buf_, buflen_, format, va);
+    va_list copy;
+    va_copy(copy, va);
+    len = vsnprintf(buf_, buflen_, format, copy);
+    va_end(copy);
     // len does not include terminating null
-    if (len >= static_cast<ssize_t>(buflen_)) {
-      // Include terminate null
-      ++len;
-      // truncated; reallocate buf and try again
-      while (static_cast<ssize_t>(buflen_) < len) {
-        buflen_ *= 2;
-      }
-      buf_ = reinterpret_cast<char*>(realloc(buf_, buflen_));
-    }
-    else if (len < 0) {
+    if (len < 0) {
       return len;
+    }
+    if (static_cast<size_t>(len) >= buflen_) {
+      const size_t required = static_cast<size_t>(len) + 1;
+      size_t newBuflen = buflen_;
+      // truncated; reallocate buf and try again
+      while (newBuflen < required) {
+        if (newBuflen > std::numeric_limits<size_t>::max() / 2) {
+          return -1;
+        }
+        newBuflen *= 2;
+      }
+      auto newBuf = reinterpret_cast<char*>(realloc(buf_, newBuflen));
+      if (!newBuf) {
+        return -1;
+      }
+      buf_ = newBuf;
+      buflen_ = newBuflen;
     }
     else {
       break;
