@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
 
 #include <cppunit/extensions/HelperMacros.h>
 
@@ -49,6 +50,9 @@ class BittorrentHelperTest : public CppUnit::TestFixture {
   CPPUNIT_TEST(testGetFileEntries_singleFileUrlListEndsWithSlash);
   CPPUNIT_TEST(testLoadFromMemory);
   CPPUNIT_TEST(testLoadFromMemory_somethingMissing);
+  CPPUNIT_TEST(testLoadFromMemory_invalidPieceLength);
+  CPPUNIT_TEST(testLoadFromMemory_invalidPieceHashes);
+  CPPUNIT_TEST(testLoadFromMemory_pieceCountOverflow);
   CPPUNIT_TEST(testLoadFromMemory_overrideName);
   CPPUNIT_TEST(testLoadFromMemory_multiFileDirTraversal);
   CPPUNIT_TEST(testLoadFromMemory_singleFileDirTraversal);
@@ -108,6 +112,9 @@ public:
   void testGetFileEntries_singleFileUrlListEndsWithSlash();
   void testLoadFromMemory();
   void testLoadFromMemory_somethingMissing();
+  void testLoadFromMemory_invalidPieceLength();
+  void testLoadFromMemory_invalidPieceHashes();
+  void testLoadFromMemory_pieceCountOverflow();
   void testLoadFromMemory_overrideName();
   void testLoadFromMemory_multiFileDirTraversal();
   void testLoadFromMemory_singleFileDirTraversal();
@@ -523,6 +530,70 @@ void BittorrentHelperTest::testLoadFromMemory_somethingMissing()
   }
   catch (Exception& e) {
     // OK
+  }
+}
+
+void BittorrentHelperTest::testLoadFromMemory_invalidPieceLength()
+{
+  const int64_t invalidPieceLengths[] = {
+      0, static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1};
+  for (auto pieceLength : invalidPieceLengths) {
+    auto info = Dict::g();
+    info->put("piece length", Integer::g(pieceLength));
+    info->put("pieces", "01234567890123456789");
+    info->put("name", "file");
+    info->put("length", Integer::g(1));
+    Dict dict;
+    dict.put("info", std::move(info));
+
+    auto dctx = std::make_shared<DownloadContext>();
+    try {
+      loadFromMemory(bencode2::encode(&dict), dctx, option_, "default");
+      CPPUNIT_FAIL("Invalid piece length must be rejected.");
+    }
+    catch (RecoverableException&) {
+      // success
+    }
+  }
+}
+
+void BittorrentHelperTest::testLoadFromMemory_invalidPieceHashes()
+{
+  auto info = Dict::g();
+  info->put("piece length", Integer::g(1));
+  info->put("pieces", "012345678901234567890");
+  info->put("name", "file");
+  info->put("length", Integer::g(1));
+  Dict dict;
+  dict.put("info", std::move(info));
+
+  auto dctx = std::make_shared<DownloadContext>();
+  try {
+    loadFromMemory(bencode2::encode(&dict), dctx, option_, "default");
+    CPPUNIT_FAIL("Partial piece hash must be rejected.");
+  }
+  catch (RecoverableException&) {
+    // success
+  }
+}
+
+void BittorrentHelperTest::testLoadFromMemory_pieceCountOverflow()
+{
+  auto info = Dict::g();
+  info->put("piece length", Integer::g(2));
+  info->put("pieces", "01234567890123456789");
+  info->put("name", "file");
+  info->put("length", Integer::g(std::numeric_limits<int64_t>::max()));
+  Dict dict;
+  dict.put("info", std::move(info));
+
+  auto dctx = std::make_shared<DownloadContext>();
+  try {
+    loadFromMemory(bencode2::encode(&dict), dctx, option_, "default");
+    CPPUNIT_FAIL("Overflowing piece count must be rejected.");
+  }
+  catch (RecoverableException&) {
+    // success
   }
 }
 

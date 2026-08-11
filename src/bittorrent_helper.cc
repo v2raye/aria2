@@ -37,6 +37,7 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 
 #include "DownloadContext.h"
 #include "Randomizer.h"
@@ -445,6 +446,10 @@ void processRootDictionary(const std::shared_ptr<DownloadContext>& ctx,
     throw DL_ABORT_EX2(fmt(MSG_MISSING_BT_INFO, C_PIECES),
                        error_code::BITTORRENT_PARSE_ERROR);
   }
+  if (piecesData->s().size() % PIECE_HASH_LENGTH != 0) {
+    throw DL_ABORT_EX2("Invalid piece hash length.",
+                       error_code::BITTORRENT_PARSE_ERROR);
+  }
   // Commented out To download 0 length torrent.
   //   if(piecesData.s().empty()) {
   //     throw DL_ABORT_EX("The length of piece hash is 0.");
@@ -462,13 +467,17 @@ void processRootDictionary(const std::shared_ptr<DownloadContext>& ctx,
                        error_code::BITTORRENT_PARSE_ERROR);
   }
 
-  if (pieceLengthData->i() < 0) {
+  if (pieceLengthData->i() <= 0) {
     throw DL_ABORT_EX2(
-        fmt(MSG_NEGATIVE_LENGTH_BT_INFO, C_PIECE_LENGTH, pieceLengthData->i()),
+        "piece length must be greater than 0.",
         error_code::BITTORRENT_PARSE_ERROR);
   }
+  if (pieceLengthData->i() > std::numeric_limits<int32_t>::max()) {
+    throw DL_ABORT_EX2("piece length is too large.",
+                       error_code::BITTORRENT_PARSE_ERROR);
+  }
 
-  size_t pieceLength = pieceLengthData->i();
+  int32_t pieceLength = static_cast<int32_t>(pieceLengthData->i());
   ctx->setPieceLength(pieceLength);
   // retrieve piece hashes
   extractPieceHash(ctx, piecesData->s(), PIECE_HASH_LENGTH, numPieces);
@@ -495,7 +504,11 @@ void processRootDictionary(const std::shared_ptr<DownloadContext>& ctx,
   // retrieve file entries
   extractFileEntries(ctx, torrent.get(), infoDict, option, defaultName,
                      overrideName, urlList);
-  if ((ctx->getTotalLength() + pieceLength - 1) / pieceLength != numPieces) {
+  const int64_t totalLength = ctx->getTotalLength();
+  const uint64_t expectedPieces =
+      static_cast<uint64_t>(totalLength / pieceLength) +
+      (totalLength % pieceLength != 0);
+  if (expectedPieces != static_cast<uint64_t>(numPieces)) {
     throw DL_ABORT_EX2("Too few/many piece hash.",
                        error_code::BITTORRENT_PARSE_ERROR);
   }
