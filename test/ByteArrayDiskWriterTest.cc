@@ -1,6 +1,9 @@
 #include "ByteArrayDiskWriter.h"
+#include <limits>
 #include <string>
 #include <cppunit/extensions/HelperMacros.h>
+
+#include "DlAbortEx.h"
 
 namespace aria2 {
 
@@ -9,6 +12,7 @@ class ByteArrayDiskWriterTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(ByteArrayDiskWriterTest);
   CPPUNIT_TEST(testWriteAndRead);
   CPPUNIT_TEST(testWriteAndRead2);
+  CPPUNIT_TEST(testRejectInvalidRanges);
   CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -17,6 +21,7 @@ public:
 
   void testWriteAndRead();
   void testWriteAndRead2();
+  void testRejectInvalidRanges();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ByteArrayDiskWriterTest);
@@ -60,6 +65,64 @@ void ByteArrayDiskWriterTest::testWriteAndRead2()
 
   CPPUNIT_ASSERT_EQUAL(std::string("Hello From Mars"), std::string(buf));
   CPPUNIT_ASSERT_EQUAL((int64_t)15, bw.size());
+}
+
+void ByteArrayDiskWriterTest::testRejectInvalidRanges()
+{
+  ByteArrayDiskWriter bw(8);
+  bw.setString("data");
+  unsigned char byte = 'x';
+
+  try {
+    bw.writeData(&byte, 1, -1);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    bw.writeData(&byte, std::numeric_limits<size_t>::max(), 0);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    bw.writeData(nullptr, 1, 0);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    bw.setString("too large");
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    bw.readData(&byte, 1, -1);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  try {
+    bw.readData(nullptr, 1, 0);
+    CPPUNIT_FAIL("exception must be thrown");
+  }
+  catch (DlAbortEx&) {
+    // success
+  }
+
+  CPPUNIT_ASSERT_EQUAL(std::string("data"), bw.getString());
+  CPPUNIT_ASSERT_EQUAL((int64_t)4, bw.size());
 }
 
 } // namespace aria2

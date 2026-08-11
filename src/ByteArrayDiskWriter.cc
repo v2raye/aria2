@@ -33,6 +33,9 @@
  */
 /* copyright --> */
 #include "ByteArrayDiskWriter.h"
+
+#include <limits>
+
 #include "A2STR.h"
 #include "DlAbortEx.h"
 #include "fmt.h"
@@ -46,7 +49,11 @@ ByteArrayDiskWriter::ByteArrayDiskWriter(size_t maxLength)
 
 ByteArrayDiskWriter::~ByteArrayDiskWriter() = default;
 
-void ByteArrayDiskWriter::clear() { buf_.str(A2STR::NIL); }
+void ByteArrayDiskWriter::clear()
+{
+  buf_.str(A2STR::NIL);
+  buf_.clear();
+}
 
 void ByteArrayDiskWriter::initAndOpenFile(int64_t totalLength) { clear(); }
 
@@ -59,10 +66,24 @@ void ByteArrayDiskWriter::openExistingFile(int64_t totalLength) { openFile(); }
 void ByteArrayDiskWriter::writeData(const unsigned char* data,
                                     size_t dataLength, int64_t offset)
 {
-  if (offset + dataLength > maxLength_) {
+  if (offset < 0 ||
+      static_cast<uint64_t>(offset) > static_cast<uint64_t>(maxLength_)) {
+    throw DL_ABORT_EX("Invalid in-memory disk write offset.");
+  }
+
+  const auto uoffset = static_cast<size_t>(offset);
+  if (dataLength > maxLength_ - uoffset ||
+      dataLength > static_cast<uint64_t>(
+                       std::numeric_limits<std::streamsize>::max()) ||
+      dataLength > static_cast<uint64_t>(
+                       std::numeric_limits<int64_t>::max() - offset)) {
     throw DL_ABORT_EX(fmt("Maximum length(%lu) exceeded.",
                           static_cast<unsigned long>(maxLength_)));
   }
+  if (dataLength != 0 && !data) {
+    throw DL_ABORT_EX("Null in-memory disk write buffer.");
+  }
+
   int64_t length = size();
   if (length < offset) {
     buf_.seekp(length, std::ios::beg);
@@ -73,26 +94,54 @@ void ByteArrayDiskWriter::writeData(const unsigned char* data,
   else {
     buf_.seekp(offset, std::ios::beg);
   }
-  buf_.write(reinterpret_cast<const char*>(data), dataLength);
+  buf_.write(reinterpret_cast<const char*>(data),
+             static_cast<std::streamsize>(dataLength));
 }
 
 ssize_t ByteArrayDiskWriter::readData(unsigned char* data, size_t len,
                                       int64_t offset)
 {
+  if (offset < 0) {
+    throw DL_ABORT_EX("Invalid in-memory disk read offset.");
+  }
+  if (len > static_cast<uint64_t>(
+                std::numeric_limits<std::streamsize>::max()) ||
+      len > static_cast<uint64_t>(std::numeric_limits<ssize_t>::max())) {
+    throw DL_ABORT_EX("In-memory disk read length is too large.");
+  }
+  if (len != 0 && !data) {
+    throw DL_ABORT_EX("Null in-memory disk read buffer.");
+  }
+
   buf_.seekg(offset, std::ios::beg);
-  buf_.read(reinterpret_cast<char*>(data), len);
+  buf_.read(reinterpret_cast<char*>(data), static_cast<std::streamsize>(len));
   buf_.clear();
   return buf_.gcount();
 }
 
 int64_t ByteArrayDiskWriter::size()
 {
-  buf_.seekg(0, std::ios::end);
   buf_.clear();
-  return buf_.tellg();
+  buf_.seekg(0, std::ios::end);
+  auto pos = buf_.tellg();
+  if (pos < 0) {
+    buf_.clear();
+    throw DL_ABORT_EX("Failed to determine in-memory disk size.");
+  }
+  return static_cast<int64_t>(pos);
 }
 
-void ByteArrayDiskWriter::setString(const std::string& s) { buf_.str(s); }
+void ByteArrayDiskWriter::setString(const std::string& s)
+{
+  if (s.size() > maxLength_ ||
+      s.size() >
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+    throw DL_ABORT_EX(fmt("Maximum length(%lu) exceeded.",
+                          static_cast<unsigned long>(maxLength_)));
+  }
+  buf_.str(s);
+  buf_.clear();
+}
 
 std::string ByteArrayDiskWriter::getString() const { return buf_.str(); }
 
