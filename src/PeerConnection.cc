@@ -110,7 +110,8 @@ bool PeerConnection::receiveMessage(unsigned char* data, size_t& dataLength)
         currentPayloadLength_ += c;
         // The message length is uint32_t
         if (i - msgOffset_ == 3) {
-          if (currentPayloadLength_ + 4 > bufferCapacity_) {
+          if (bufferCapacity_ < 4 ||
+              currentPayloadLength_ > bufferCapacity_ - 4) {
             throw DL_ABORT_EX(fmt(EX_TOO_LONG_PAYLOAD, currentPayloadLength_));
           }
           if (currentPayloadLength_ == 0) {
@@ -127,8 +128,10 @@ bool PeerConnection::receiveMessage(unsigned char* data, size_t& dataLength)
         // We chose the bufferCapacity_ so that whole message,
         // including 4 bytes length and payload, in it. So here we
         // just make sure that it happens.
-        if (resbufLength_ - msgOffset_ >= 4 + currentPayloadLength_) {
-          i = msgOffset_ + 4 + currentPayloadLength_ - 1;
+        const auto messageLength =
+            static_cast<size_t>(currentPayloadLength_) + 4;
+        if (resbufLength_ - msgOffset_ >= messageLength) {
+          i = msgOffset_ + messageLength - 1;
           done = true;
           msgState_ = BT_MSG_PREV_READ_LENGTH;
         }
@@ -150,8 +153,10 @@ bool PeerConnection::receiveMessage(unsigned char* data, size_t& dataLength)
     }
     else {
       assert(resbufOffset_ == resbufLength_);
+      const auto messageLength =
+          static_cast<size_t>(currentPayloadLength_) + 4;
       if (resbufLength_ != 0) {
-        if (resbufLength_ - msgOffset_ == currentPayloadLength_ + 4) {
+        if (resbufLength_ - msgOffset_ == messageLength) {
           // All bytes in buffer have been processed, so clear it
           // away.
           resbufLength_ = 0;
@@ -172,7 +177,7 @@ bool PeerConnection::receiveMessage(unsigned char* data, size_t& dataLength)
       // To reduce the amount of copy involved in buffer shift, large
       // payload will be read exactly.
       if (currentPayloadLength_ > 4_k) {
-        nread = currentPayloadLength_ + 4 - resbufLength_;
+        nread = messageLength - resbufLength_;
       }
       else {
         nread = bufferCapacity_ - resbufLength_;
