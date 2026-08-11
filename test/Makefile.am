@@ -98,6 +98,10 @@ if ENABLE_XML_RPC
 aria2c_SOURCES += XmlRpcRequestParserControllerTest.cc
 endif # ENABLE_XML_RPC
 
+if ENABLE_WEBSOCKET
+aria2c_SOURCES += WebSocketSessionTest.cc
+endif # ENABLE_WEBSOCKET
+
 if HAVE_SOME_FALLOCATE
 aria2c_SOURCES += FallocFileAllocationIteratorTest.cc
 endif  # HAVE_SOME_FALLOCATE

@@ -54,6 +54,13 @@ class WebSocketInteractionCommand;
 
 class WebSocketSession {
 public:
+  static constexpr size_t MAX_OUTBOUND_QUEUE_LENGTH = 16 * 1024 * 1024;
+  static constexpr size_t MAX_OUTBOUND_QUEUE_MESSAGES = 1024;
+
+  static bool outboundQueueWouldOverflow(size_t queuedLength,
+                                         size_t queuedCount,
+                                         size_t messageLength);
+
   WebSocketSession(const std::shared_ptr<SocketCore>& socket,
                    DownloadEngine* e);
   ~WebSocketSession();
@@ -75,6 +82,9 @@ public:
   // Adds text message |msg|. The message is queued and will be sent
   // in onWriteEvent().
   void addTextMessage(const std::string& msg, bool delayed);
+
+  size_t getQueuedMessageLength() const;
+  size_t getQueuedMessageCount() const;
   // Returns true if the close frame is received.
   bool closeReceived();
   // Returns true if the close frame is sent.

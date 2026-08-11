@@ -55,6 +55,18 @@ namespace aria2 {
 
 namespace rpc {
 
+constexpr size_t WebSocketSession::MAX_OUTBOUND_QUEUE_LENGTH;
+constexpr size_t WebSocketSession::MAX_OUTBOUND_QUEUE_MESSAGES;
+
+bool WebSocketSession::outboundQueueWouldOverflow(size_t queuedLength,
+                                                  size_t queuedCount,
+                                                  size_t messageLength)
+{
+  return queuedLength > MAX_OUTBOUND_QUEUE_LENGTH ||
+         messageLength > MAX_OUTBOUND_QUEUE_LENGTH - queuedLength ||
+         queuedCount >= MAX_OUTBOUND_QUEUE_MESSAGES;
+}
+
 namespace {
 ssize_t sendCallback(wslay_event_context_ptr wsctx, const uint8_t* data,
                      size_t len, int flags, void* userData)
@@ -290,12 +302,29 @@ void WebSocketSession::addTextMessage(const std::string& msg, bool delayed)
     return;
   }
 
-  // TODO Don't add text message if the size of outbound queue in
-  // wsctx_ exceeds certain limit.
+  const auto queuedLength = getQueuedMessageLength();
+  const auto queuedCount = getQueuedMessageCount();
+  if (outboundQueueWouldOverflow(queuedLength, queuedCount, msg.size())) {
+    A2_LOG_WARN("WebSocket outbound queue limit exceeded; dropping message.");
+    return;
+  }
+
   wslay_event_msg arg = {WSLAY_TEXT_FRAME,
                          reinterpret_cast<const uint8_t*>(msg.c_str()),
                          msg.size()};
-  wslay_event_queue_msg(wsctx_, &arg);
+  if (wslay_event_queue_msg(wsctx_, &arg) != 0) {
+    A2_LOG_WARN("Failed to queue WebSocket text message.");
+  }
+}
+
+size_t WebSocketSession::getQueuedMessageLength() const
+{
+  return wslay_event_get_queued_msg_length(wsctx_);
+}
+
+size_t WebSocketSession::getQueuedMessageCount() const
+{
+  return wslay_event_get_queued_msg_count(wsctx_);
 }
 
 bool WebSocketSession::closeReceived()
