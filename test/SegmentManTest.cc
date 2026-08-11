@@ -17,6 +17,7 @@ class SegmentManTest : public CppUnit::TestFixture {
 
   CPPUNIT_TEST_SUITE(SegmentManTest);
   CPPUNIT_TEST(testNullBitfield);
+  CPPUNIT_TEST(testUnknownLengthStorageState);
   CPPUNIT_TEST(testCompleteSegment);
   CPPUNIT_TEST(testGetSegment_sameFileEntry);
   CPPUNIT_TEST(testRegisterPeerStat);
@@ -43,6 +44,7 @@ public:
   }
 
   void testNullBitfield();
+  void testUnknownLengthStorageState();
   void testCompleteSegment();
   void testGetSegment_sameFileEntry();
   void testRegisterPeerStat();
@@ -75,6 +77,28 @@ void SegmentManTest::testNullBitfield()
 
   segmentMan.cancelSegment(1);
   CPPUNIT_ASSERT(segmentMan.getSegment(2, minSplitSize));
+}
+
+void SegmentManTest::testUnknownLengthStorageState()
+{
+  auto dctx = std::make_shared<DownloadContext>(0, 0, "aria2.tar.bz2");
+  UnknownLengthPieceStorage ps(dctx);
+
+  CPPUNIT_ASSERT(ps.hasMissingUnusedPiece());
+  auto piece = ps.getMissingPiece(0, nullptr, 0, 1);
+  CPPUNIT_ASSERT(piece);
+  CPPUNIT_ASSERT(!ps.hasMissingUnusedPiece());
+
+  ps.markPiecesDone(0);
+  CPPUNIT_ASSERT(ps.hasMissingUnusedPiece());
+  CPPUNIT_ASSERT(!ps.downloadFinished());
+  CPPUNIT_ASSERT_EQUAL(static_cast<int32_t>(0), ps.getPieceLength(0));
+
+  ps.markAllPiecesDone();
+  CPPUNIT_ASSERT(ps.downloadFinished());
+  ps.markPieceMissing(0);
+  CPPUNIT_ASSERT(!ps.downloadFinished());
+  CPPUNIT_ASSERT(ps.hasMissingUnusedPiece());
 }
 
 void SegmentManTest::testCompleteSegment()

@@ -34,8 +34,6 @@
 /* copyright --> */
 #include "UnknownLengthPieceStorage.h"
 
-#include <cstdlib>
-
 #include "DefaultDiskWriter.h"
 #include "DirectDiskAdaptor.h"
 #include "prefs.h"
@@ -44,6 +42,7 @@
 #include "Piece.h"
 #include "FileEntry.h"
 #include "BitfieldMan.h"
+#include "DlAbortEx.h"
 
 namespace aria2 {
 
@@ -76,14 +75,13 @@ void UnknownLengthPieceStorage::initStorage()
 bool UnknownLengthPieceStorage::hasMissingPiece(
     const std::shared_ptr<Peer>& peer)
 {
-  abort();
+  return false;
 }
 
 void UnknownLengthPieceStorage::getMissingPiece(
     std::vector<std::shared_ptr<Piece>>& pieces, size_t minMissingBlocks,
     const std::shared_ptr<Peer>& peer, cuid_t cuid)
 {
-  abort();
 }
 
 void UnknownLengthPieceStorage::getMissingPiece(
@@ -91,14 +89,12 @@ void UnknownLengthPieceStorage::getMissingPiece(
     const std::shared_ptr<Peer>& peer,
     const std::vector<size_t>& excludedIndexes, cuid_t cuid)
 {
-  abort();
 }
 
 void UnknownLengthPieceStorage::getMissingFastPiece(
     std::vector<std::shared_ptr<Piece>>& pieces, size_t minMissingBlocks,
     const std::shared_ptr<Peer>& peer, cuid_t cuid)
 {
-  abort();
 }
 
 void UnknownLengthPieceStorage::getMissingFastPiece(
@@ -106,25 +102,27 @@ void UnknownLengthPieceStorage::getMissingFastPiece(
     const std::shared_ptr<Peer>& peer,
     const std::vector<size_t>& excludedIndexes, cuid_t cuid)
 {
-  abort();
 }
 
 std::shared_ptr<Piece>
 UnknownLengthPieceStorage::getMissingPiece(const std::shared_ptr<Peer>& peer,
                                            cuid_t cuid)
 {
-  abort();
+  return nullptr;
 }
 
 std::shared_ptr<Piece> UnknownLengthPieceStorage::getMissingPiece(
     const std::shared_ptr<Peer>& peer,
     const std::vector<size_t>& excludedIndexes, cuid_t cuid)
 {
-  abort();
+  return nullptr;
 }
 #endif // ENABLE_BITTORRENT
 
-bool UnknownLengthPieceStorage::hasMissingUnusedPiece() { abort(); }
+bool UnknownLengthPieceStorage::hasMissingUnusedPiece()
+{
+  return !downloadFinished_ && !piece_;
+}
 
 std::shared_ptr<Piece>
 UnknownLengthPieceStorage::getMissingPiece(size_t minSplitSize,
@@ -172,7 +170,7 @@ std::shared_ptr<Piece> UnknownLengthPieceStorage::getPiece(size_t index)
 void UnknownLengthPieceStorage::completePiece(
     const std::shared_ptr<Piece>& piece)
 {
-  if (*piece_ == *piece) {
+  if (piece_ && piece && *piece_ == *piece) {
     downloadFinished_ = true;
     totalLength_ = piece_->getLength();
     diskAdaptor_->setTotalLength(totalLength_);
@@ -185,7 +183,7 @@ void UnknownLengthPieceStorage::completePiece(
 void UnknownLengthPieceStorage::cancelPiece(const std::shared_ptr<Piece>& piece,
                                             cuid_t cuid)
 {
-  if (*piece_ == *piece) {
+  if (piece_ && piece && *piece_ == *piece) {
     piece_.reset();
   }
 }
@@ -226,9 +224,7 @@ std::shared_ptr<DiskAdaptor> UnknownLengthPieceStorage::getDiskAdaptor()
 
 int32_t UnknownLengthPieceStorage::getPieceLength(size_t index)
 {
-  // TODO Basically, PieceStorage::getPieceLength() is only used by
-  // BitTorrent, and it does not use UnknownLengthPieceStorage.
-  abort();
+  return 0;
 }
 
 void UnknownLengthPieceStorage::createBitfield()
@@ -254,14 +250,26 @@ void UnknownLengthPieceStorage::markAllPiecesDone()
 
 void UnknownLengthPieceStorage::markPiecesDone(int64_t length)
 {
-  // TODO not implemented yet
-  abort();
+  if (length != 0) {
+    throw DL_ABORT_EX(
+        "Cannot restore a non-empty unknown-length download safely.");
+  }
+
+  piece_.reset();
+  bitfield_.reset();
+  totalLength_ = 0;
+  downloadFinished_ = false;
 }
 
 void UnknownLengthPieceStorage::markPieceMissing(size_t index)
 {
-  // TODO not implemented yet
-  abort();
+  if (index != 0) {
+    return;
+  }
+
+  piece_.reset();
+  bitfield_.reset();
+  downloadFinished_ = false;
 }
 
 void UnknownLengthPieceStorage::getInFlightPieces(
