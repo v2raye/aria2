@@ -93,6 +93,15 @@ void Base64Test::testDecode()
 
   s = "/w==";
   CPPUNIT_ASSERT_EQUAL(std::string(1, -1), base64::decode(s.begin(), s.end()));
+
+  // Non-ASCII bytes are invalid input and must be skipped without using a
+  // negative char value as an array index.
+  s = "T";
+  for (int c = 0x80; c <= 0xff; ++c) {
+    s += static_cast<char>(c);
+  }
+  s += "WFu";
+  CPPUNIT_ASSERT_EQUAL(std::string("Man"), base64::decode(s.begin(), s.end()));
 }
 
 void Base64Test::testLongString()

@@ -93,7 +93,8 @@ template <typename InputIterator>
 InputIterator getNext(InputIterator first, InputIterator last, const int* tbl)
 {
   for (; first != last; ++first) {
-    if (tbl[static_cast<size_t>(*first)] != -1 || *first == '=') {
+    const auto ch = static_cast<unsigned char>(*first);
+    if (tbl[ch] != -1 || ch == '=') {
       break;
     }
   }
@@ -119,6 +120,8 @@ std::string decode(InputIterator first, InputIterator last)
       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
       -1, -1, -1, -1};
+  static_assert(sizeof(INDEX_TABLE) / sizeof(INDEX_TABLE[0]) == 256,
+                "Base64 index table must cover every byte value");
   std::string res;
   InputIterator k[4];
   int eq = 0;
