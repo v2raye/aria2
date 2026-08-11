@@ -43,6 +43,7 @@
 #include <cerrno>
 #include <cstring>
 #include <cassert>
+#include <limits>
 
 #include "File.h"
 #include "util.h"
@@ -74,6 +75,13 @@ AbstractDiskWriter::AbstractDiskWriter(const std::string& filename)
 AbstractDiskWriter::~AbstractDiskWriter() { closeFile(); }
 
 namespace {
+bool invalidRange(int64_t offset, size_t length)
+{
+  return offset < 0 ||
+         length > static_cast<uint64_t>(
+                      std::numeric_limits<int64_t>::max() - offset);
+}
+
 // Returns error code depending on the platform. For MinGW32, return
 // the value of GetLastError(). Otherwise, return errno.
 int fileError()
@@ -322,7 +330,9 @@ ssize_t AbstractDiskWriter::readDataInternal(unsigned char* data, size_t len,
 
 void AbstractDiskWriter::seek(int64_t offset)
 {
-  assert(offset >= 0);
+  if (offset < 0) {
+    throw DL_ABORT_EX("Invalid disk seek offset.");
+  }
 #ifdef __MINGW32__
   LARGE_INTEGER fileLength;
   fileLength.QuadPart = offset;
@@ -341,9 +351,10 @@ void AbstractDiskWriter::seek(int64_t offset)
 void AbstractDiskWriter::ensureMmapWrite(size_t len, int64_t offset)
 {
 #if defined(HAVE_MMAP) || defined(__MINGW32__)
+  const auto end = offset + static_cast<int64_t>(len);
   if (enableMmap_) {
     if (mapaddr_) {
-      if (static_cast<int64_t>(len + offset) > maplen_) {
+      if (end > maplen_) {
         int errNum = 0;
 #  ifdef __MINGW32__
         if (!UnmapViewOfFile(mapaddr_)) {
@@ -384,7 +395,7 @@ void AbstractDiskWriter::ensureMmapWrite(size_t len, int64_t offset)
       }
 
       int errNum = 0;
-      if (static_cast<int64_t>(len + offset) <= filesize) {
+      if (end <= filesize) {
 #  ifdef __MINGW32__
         mapView_ = CreateFileMapping(fd_, 0, PAGE_READWRITE, filesize >> 32,
                                      filesize & 0xffffffffu, 0);
@@ -444,6 +455,13 @@ bool isDiskFullError(int errNum)
 void AbstractDiskWriter::writeData(const unsigned char* data, size_t len,
                                    int64_t offset)
 {
+  if (invalidRange(offset, len) ||
+      len > static_cast<uint64_t>(std::numeric_limits<ssize_t>::max())) {
+    throw DL_ABORT_EX("Invalid disk write range.");
+  }
+  if (len != 0 && !data) {
+    throw DL_ABORT_EX("Null disk write buffer.");
+  }
   ensureMmapWrite(len, offset);
   if (writeDataInternal(data, len, offset) < 0) {
     int errNum = fileError();
@@ -467,6 +485,13 @@ void AbstractDiskWriter::writeData(const unsigned char* data, size_t len,
 ssize_t AbstractDiskWriter::readData(unsigned char* data, size_t len,
                                      int64_t offset)
 {
+  if (invalidRange(offset, len) ||
+      len > static_cast<uint64_t>(std::numeric_limits<ssize_t>::max())) {
+    throw DL_ABORT_EX("Invalid disk read range.");
+  }
+  if (len != 0 && !data) {
+    throw DL_ABORT_EX("Null disk read buffer.");
+  }
   ssize_t ret;
   if ((ret = readDataInternal(data, len, offset)) < 0) {
     int errNum = fileError();
@@ -482,6 +507,9 @@ void AbstractDiskWriter::truncate(int64_t length)
 {
   if (fd_ == A2_BAD_FD) {
     throw DL_ABORT_EX("File not yet opened.");
+  }
+  if (length < 0) {
+    throw DL_ABORT_EX("Invalid file truncation length.");
   }
 #ifdef __MINGW32__
   // Since mingw32's ftruncate cannot handle over 2GB files, we use
@@ -503,6 +531,10 @@ void AbstractDiskWriter::allocate(int64_t offset, int64_t length, bool sparse)
 {
   if (fd_ == A2_BAD_FD) {
     throw DL_ABORT_EX("File not yet opened.");
+  }
+  if (offset < 0 || length < 0 ||
+      offset > std::numeric_limits<int64_t>::max() - length) {
+    throw DL_ABORT_EX("Invalid file allocation range.");
   }
   if (sparse) {
 #ifdef __MINGW32__
