@@ -60,6 +60,9 @@ public:
   static bool outboundQueueWouldOverflow(size_t queuedLength,
                                          size_t queuedCount,
                                          size_t messageLength);
+  static bool requestLengthExceedsLimit(uint64_t receivedLength,
+                                        size_t incomingLength,
+                                        uint64_t maximumLength);
 
   WebSocketSession(const std::shared_ptr<SocketCore>& socket,
                    DownloadEngine* e);
@@ -116,7 +119,8 @@ private:
   DownloadEngine* e_;
   wslay_event_context_ptr wsctx_;
   bool ignorePayload_;
-  int32_t receivedLength_;
+  bool requestTooLarge_;
+  uint64_t receivedLength_;
   json::ValueBaseJsonParser parser_;
   WebSocketInteractionCommand* command_;
 };

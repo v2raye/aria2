@@ -243,7 +243,7 @@ bool HttpServerCommand::execute()
 #endif // !ENABLE_WEBSOCKET
       }
       else {
-        if (e_->getOption()->getAsInt(PREF_RPC_MAX_REQUEST_SIZE) <
+        if (e_->getOption()->getAsLLInt(PREF_RPC_MAX_REQUEST_SIZE) <
             httpServer_->getContentLength()) {
           A2_LOG_INFO(fmt("Request too long. ContentLength=%" PRId64 "."
                           " See --rpc-max-request-size option to loose"

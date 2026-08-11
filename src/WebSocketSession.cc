@@ -67,6 +67,14 @@ bool WebSocketSession::outboundQueueWouldOverflow(size_t queuedLength,
          queuedCount >= MAX_OUTBOUND_QUEUE_MESSAGES;
 }
 
+bool WebSocketSession::requestLengthExceedsLimit(uint64_t receivedLength,
+                                                 size_t incomingLength,
+                                                 uint64_t maximumLength)
+{
+  return receivedLength > maximumLength ||
+         incomingLength > maximumLength - receivedLength;
+}
+
 namespace {
 ssize_t sendCallback(wslay_event_context_ptr wsctx, const uint8_t* data,
                      size_t len, int flags, void* userData)
@@ -227,6 +235,7 @@ WebSocketSession::WebSocketSession(const std::shared_ptr<SocketCore>& socket,
     : socket_(socket),
       e_(e),
       ignorePayload_(false),
+      requestTooLarge_(false),
       receivedLength_(0),
       command_(nullptr)
 {
@@ -339,23 +348,30 @@ bool WebSocketSession::closeSent()
 
 ssize_t WebSocketSession::parseUpdate(const uint8_t* data, size_t len)
 {
-  // Cap the number of bytes to feed the parser
-  size_t maxlen = e_->getOption()->getAsInt(PREF_RPC_MAX_REQUEST_SIZE);
-  if (receivedLength_ + len <= maxlen) {
-    receivedLength_ += len;
+  const auto configuredMax =
+      e_->getOption()->getAsLLInt(PREF_RPC_MAX_REQUEST_SIZE);
+  if (configuredMax < 0 || requestLengthExceedsLimit(
+                               receivedLength_, len,
+                               static_cast<uint64_t>(configuredMax))) {
+    requestTooLarge_ = true;
+    return 0;
   }
-  else {
-    len = 0;
-  }
+  receivedLength_ += len;
   return parser_.parseUpdate(reinterpret_cast<const char*>(data), len);
 }
 
 std::unique_ptr<ValueBase>
 WebSocketSession::parseFinal(const uint8_t* data, size_t len, ssize_t& error)
 {
+  const bool requestTooLarge = requestTooLarge_;
   auto res =
       parser_.parseFinal(reinterpret_cast<const char*>(data), len, error);
   receivedLength_ = 0;
+  requestTooLarge_ = false;
+  if (requestTooLarge) {
+    error = -1;
+    return nullptr;
+  }
   return res;
 }
 

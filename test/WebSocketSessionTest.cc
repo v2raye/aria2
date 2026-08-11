@@ -1,5 +1,6 @@
 #include "WebSocketSession.h"
 
+#include <limits>
 #include <string>
 
 #include <cppunit/extensions/HelperMacros.h>
@@ -10,10 +11,12 @@ namespace rpc {
 class WebSocketSessionTest : public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(WebSocketSessionTest);
   CPPUNIT_TEST(testOutboundQueueLimits);
+  CPPUNIT_TEST(testRequestLengthLimit);
   CPPUNIT_TEST_SUITE_END();
 
 public:
   void testOutboundQueueLimits();
+  void testRequestLengthLimit();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(WebSocketSessionTest);
@@ -40,6 +43,14 @@ void WebSocketSessionTest::testOutboundQueueLimits()
   }
   CPPUNIT_ASSERT_EQUAL(WebSocketSession::MAX_OUTBOUND_QUEUE_MESSAGES,
                        session.getQueuedMessageCount());
+}
+
+void WebSocketSessionTest::testRequestLengthLimit()
+{
+  const auto max = std::numeric_limits<uint64_t>::max();
+  CPPUNIT_ASSERT(!WebSocketSession::requestLengthExceedsLimit(max, 0, max));
+  CPPUNIT_ASSERT(WebSocketSession::requestLengthExceedsLimit(max, 1, max));
+  CPPUNIT_ASSERT(WebSocketSession::requestLengthExceedsLimit(11, 0, 10));
 }
 
 } // namespace rpc
